@@ -276,8 +276,9 @@ rest of the app runs.
   screen: copy the tool, the firmware cache and the parent's whole home
   folder (toolchains, firmware, the OS image and anything added since), minus
   a short list of what must never travel, each entry with its reason;
-  install the Python stack from carried wheels and the screen stack from
-  carried `.deb`s; hand down the maps, records and fleet roster; give the new
+  install the Python stack from carried wheels and, from carried `.deb`s, the
+  screen stack and every system package the parent installed since it was
+  imaged (all of it, or the step stops and names what is missing); hand down the maps, records and fleet roster; give the new
   medic its **own fresh identity** (never a key copy), stamp its lineage,
   install its card helper, radio helper and SSH key, and set it to boot into
   the tool. Last, it locks the new medic the way the parent is locked —

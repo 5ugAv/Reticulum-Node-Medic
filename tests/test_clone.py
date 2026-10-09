@@ -63,6 +63,7 @@ def conn(cpuinfo=PI5_CPUINFO):
     c = EmulatedConnection(default_code=0, default_stdout="ok")
     c.rules.insert(0, ("/proc/cpuinfo", 0, cpuinfo, ""))
     c.rules.insert(0, ("id -un", 0, "nodemedic", ""))
+    c.rules.insert(0, ("dpkg-query -W -f='${Status}'", 0, "install ok installed", ""))
     c.rules.insert(0, ("rnid --generate", 0, IDENTITY_OUT, ""))
     c.rules.insert(0, ("test -f ~/.reticulum/storage/identity", 1, "", ""))
     c.rules.insert(0, ("systemctl is-active reticulum-node-medic", 0, "active", ""))

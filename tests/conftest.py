@@ -42,6 +42,10 @@ def pytest_configure(config):
         "neutralise the host lookups for it")
     config.addinivalue_line(
         "markers",
+        "real_package_store: test drives the clone's package step itself — do "
+        "not hand it the shared pretend store")
+    config.addinivalue_line(
+        "markers",
         "usb_ports: test drives the engraved-hole port translation itself — "
         "do not stand its medic-identity check down for it")
 
@@ -199,3 +203,20 @@ def _no_real_parent_freeze(monkeypatch):
     import workflows.clone as _clone
     monkeypatch.setattr(_carry, "_freeze_parent", lambda rep: None)
     monkeypatch.setattr(_clone, "_freeze_parent", lambda: "")
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_package_store(request, monkeypatch):
+    """No test may read this machine's own package store or dpkg log through
+    the clone's package step: it carries what THIS medic has, and a test
+    machine has neither. The clone tests get a one-file store; the tests of
+    the step itself (marker ``real_package_store``) replace the seam their
+    own way."""
+    if request.node.get_closest_marker("real_package_store"):
+        return
+    try:
+        from workflows import clone
+    except Exception:
+        return
+    monkeypatch.setattr(clone, "_carried_debs",
+                        lambda: (["/carried/direwolf_1.7_arm64.deb"], (), [], []))

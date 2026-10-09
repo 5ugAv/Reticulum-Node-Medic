@@ -192,6 +192,122 @@ CLONE_BASE_ISSUE = "Raspberry Pi reference 2026-06-18"
 #: One planned list per install step on the clone, written next to the debs.
 PLAN_LISTS = {"display": DISPLAY_PACKAGES, "radio": APT_PACKAGES}
 
+#: Everything a medic installed after it was imaged travels to its clones too
+#: (keeper, 2026-10-09: "We shouldn't give the medic an option to miss
+#: anything"). It is read from dpkg's own log and kept in a ledger in the
+#: records, so a rotated system log cannot lose it; the ledger travels to every
+#: clone, so a clone of a clone keeps the list. Only these stay behind:
+PACKAGES_NEVER = {
+    "wayvnc": "a remote-screen service a clone never asked for",
+    "realvnc-vnc-server": "a remote-screen service a clone never asked for",
+    "xrdp": "a remote-screen service a clone never asked for",
+    "x11vnc": "a remote-screen service a clone never asked for",
+    "tigervnc-standalone-server": "a remote-screen service a clone never asked for",
+}
+ADDED_LEDGER = "~/.reticulum-node-medic/packages_added.txt"
+DPKG_LOGS = "/var/log/dpkg.log*"
+
+
+def base_packages(status: str = CLONE_BASE_STATUS) -> set:
+    """Every package a fresh card already has installed."""
+    names, current = set(), None
+    try:
+        with open(status, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("Package: "):
+                    current = line.split(":", 1)[1].strip()
+                elif (line.startswith("Status: ") and current
+                      and line.rstrip().endswith(" installed")
+                      and "not-installed" not in line):
+                    names.add(current)
+    except OSError:
+        pass
+    return names
+
+
+def dpkg_log_installs(pattern: str = DPKG_LOGS) -> set:
+    """Every package dpkg's own log says was installed on this machine."""
+    import glob
+    import gzip
+    import re
+    out = set()
+    for path in glob.glob(pattern):
+        opener = gzip.open if path.endswith(".gz") else open
+        try:
+            with opener(path, "rt", errors="replace") as fh:
+                for line in fh:
+                    m = re.match(r"\S+ \S+ install (\S+?)(?::\S+)? ", line)
+                    if m:
+                        out.add(m.group(1))
+        except OSError:
+            continue
+    return out
+
+
+def installed_now() -> set:
+    """The packages dpkg has installed on this machine now."""
+    import subprocess
+    try:
+        out = subprocess.run(["dpkg-query", "-W", "-f=${Package} ${Status}\n"],
+                             capture_output=True, text=True, timeout=60).stdout
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {l.split()[0] for l in out.splitlines() if l.endswith("install ok installed")}
+
+
+def added_packages(logs: str = DPKG_LOGS, ledger: str = ADDED_LEDGER, base=None,
+                   installed=None, write: bool = True) -> tuple:
+    """What this medic installed after it was imaged and still has, with what
+    its parent recorded, minus what every fresh card already has, the planned
+    baseline lists and PACKAGES_NEVER. Updates the ledger."""
+    path = os.path.expanduser(ledger)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            recorded = {l.strip() for l in fh if l.strip() and not l.startswith("#")}
+    except OSError:
+        recorded = set()
+    have = installed_now() if installed is None else set(installed)
+    names = (dpkg_log_installs(logs) | recorded) & have
+    if write and names != recorded:
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("# packages this medic installed after imaging; "
+                         "they travel to every clone\n")
+                fh.write("".join(f"{n}\n" for n in sorted(names)))
+        except OSError:
+            pass
+    base = base_packages() if base is None else set(base)
+    return tuple(sorted(names - base - set(ALL_PACKAGES) - set(PACKAGES_NEVER)))
+
+
+def carried_package_names(deb_dir: str = DEB_CACHE) -> set:
+    """The package names the store holds a planned .deb for, in any plan."""
+    names = set()
+    for list_name in list(PLAN_LISTS) + ["added"]:
+        for f in planned_debs(list_name, deb_dir) or []:
+            names.add(os.path.basename(f).split("_", 1)[0])
+    return names
+
+
+def ensure_added_plan(added, deb_dir: str = DEB_CACHE, connection=None) -> tuple:
+    """Make sure every package in *added* has a planned .deb in the store,
+    planning the set against a fresh card when the store falls short (that
+    needs the internet). Returns ``(files to hand on, packages still not
+    covered)``; the second is empty when nothing is missing."""
+    if not added:
+        return [], []
+    short = sorted(set(added) - carried_package_names(deb_dir))
+    if short:
+        if connection is None:
+            from transport.connection import LocalConnection
+            connection = LocalConnection()
+        code, _out, _err = connection.run(
+            planned_download_command("added", tuple(added), deb_dir), timeout=1800)
+        if code == 0:
+            short = sorted(set(added) - carried_package_names(deb_dir))
+    return (planned_debs("added", deb_dir) or []), short
+
 
 def plan_uri_lines(packages, status: str = CLONE_BASE_STATUS) -> str:
     """``url filename algo hash`` for what a card in *status*'s state needs to
@@ -377,6 +493,16 @@ def cache_debs(connection, packages=ALL_PACKAGES, dest: str = DEB_CACHE,
                                f"fresh card: {(err or out)[-200:]}")
             n = connection.run(f"wc -l < {dest}/{list_name}.list")[1].strip()
             made.append(f"{list_name} {n}")
+        added = added_packages()
+        if added:
+            code, out, err = connection.run(
+                planned_download_command("added", added, dest), timeout=timeout)
+            if code != 0:
+                return False, ("could not plan or fetch what this medic added "
+                               f"since imaging ({', '.join(added[:6])}): "
+                               f"{(err or out)[-200:]}")
+            n = connection.run(f"wc -l < {dest}/added.list")[1].strip()
+            made.append(f"added since imaging {n}")
         if deb_count(connection, dest) == 0:
             return False, "apt reported success but no .deb files landed."
         return True, ("Planned against a fresh card (" + CLONE_BASE_ISSUE + "): "

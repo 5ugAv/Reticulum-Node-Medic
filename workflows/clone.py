@@ -338,43 +338,51 @@ def install_dependencies(wf: "CloneWorkflow") -> StepResult:
                       else f"Dependency install failed ({source}): {(err or out)[-200:]}")
 
 
+def _carried_debs():
+    """``(baseline files, packages added since imaging, their files, packages
+    still not covered)`` from THIS medic's store and dpkg log. One seam, so
+    the tests can hand the step a store of their own."""
+    from workflows.wheelhouse import (APT_PACKAGES, DEB_CACHE, added_packages,
+                                      debs_for, ensure_added_plan)
+    picked = debs_for(APT_PACKAGES, DEB_CACHE) or []
+    added = added_packages()
+    extra, short = ensure_added_plan(added, DEB_CACHE)
+    return picked, added, extra, short
+
+
 @clone_step
 def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
-    """Install the .deb packages the medic carries, with no internet.
+    """Install, with no internet, every package this medic carries: the
+    baseline (Dire Wolf, ALSA, gpsd, uhubctl, the programs the code runs) and
+    everything this medic installed after it was imaged.
 
-    Dire Wolf is the software modem that turns a salvaged handheld radio into
-    something that can carry Reticulum traffic. It is in Debian, and until now
-    it was NOT carried — the same trap that killed the LUKS vault, where
-    cryptsetup sat in apt and nowhere on the medic, so a clone in the field
-    could never enable the feature it was being offered.
-
-    Not fatal when the cache is empty. A medic that has never been online to
-    populate it still makes a working clone; it just makes one that cannot yet
-    talk to a voice radio, and the salvage screen already says so.
+    Nothing here is optional any more (keeper, 2026-10-09: "We shouldn't give
+    the medic an option to miss anything"). This step used to call a missing
+    package optional and report success, which is how a clone could say
+    "every step verified" while missing tools. Now it installs everything or
+    stops and names what is missing, with what to do.
     """
-    from workflows.wheelhouse import APT_PACKAGES, offline_install_command, debs_for, DEB_CACHE
-    cache = "/tmp/nm-radio-debs"
-    picked = debs_for(APT_PACKAGES, DEB_CACHE)
+    from workflows.wheelhouse import APT_PACKAGES, offline_install_command
+    name = "install_carried_packages"
+    picked, added, extra, short = _carried_debs()
     if not picked:
-        return StepResult("install_carried_packages", True,
-                          "No radio-modem packages carried — skipping (the clone "
-                          "works without them; refresh the package cache while "
-                          "online to carry Dire Wolf for radio work).", skipped=True)
+        return StepResult(name, False,
+                          "This medic's package store is empty, so the new medic "
+                          "would miss packages it needs. Connect this medic to the "
+                          "internet once and run Settings > Field readiness, then "
+                          "press Retry.")
+    if short:
+        return StepResult(name, False,
+                          "This medic has packages it cannot hand on yet: "
+                          + ", ".join(short[:8]) + ("..." if len(short) > 8 else "")
+                          + ". Connect this medic to the internet once, then press "
+                          "Retry; it fetches them and carries on.")
+    cache = "/tmp/nm-radio-debs"
+    files = sorted(set(picked) | set(extra))
     wf.connection.run(f"rm -rf {cache} && mkdir -p {cache}")
-    for f in picked:
+    for f in files:
         wf.connection.push_file(f, f"{cache}/")
-    code, out, _err = wf.connection.run(f"ls {cache}/*.deb 2>/dev/null | wc -l")
-    try:
-        count = int((out or "0").strip())
-    except ValueError:
-        count = 0
-    if count == 0:
-        return StepResult("install_carried_packages", True,
-                          "No .deb packages carried — skipping (the clone works "
-                          "without them; run the package cache while online to "
-                          "carry Dire Wolf for radio work).")
-    icode, iout, ierr = wf.connection.run(
-        wf.priv(offline_install_command(cache)), timeout=600)
+    wf.connection.run(wf.priv(offline_install_command(cache)), timeout=900)
     # Ask dpkg, not PATH: gpsd lives in /usr/sbin, which a normal user's PATH
     # does not include — the Wi-Fi-off proof clone called a perfect offline
     # install a failure that way (2026-10-06).
@@ -382,30 +390,28 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
         code, out, _e = wf.connection.run(
             f"dpkg-query -W -f='${{Status}}' {pkg} 2>/dev/null")
         return code == 0 and "install ok installed" in (out or "")
-    have = _installed("direwolf")
-    gps = _installed("gpsd") and _installed("gpsd-clients")
-    if not gps:
-        # gpsd is no longer what the new medic's radio set-up uses (the
-        # splitter reads the Tracker's GPS directly); a miss is a note
-        return StepResult("install_carried_packages", True,
-                          "Some optional packages did not install (GPS tools, "
-                          "voice-radio support). The clone works without them.",
-                          skipped=True)
-    if not have:
-        # optional: the clone works; only voice-radio packet support is missing
-        return StepResult("install_carried_packages", True,
-                          "GPS software installed. Voice-radio packet support "
-                          "(Dire Wolf) did not install — the clone works without it.",
-                          skipped=True)
-    return StepResult("install_carried_packages", True,
-                      f"Installed {count} carried .deb packages offline "
-                      f"(Dire Wolf is available for radio work).")
+    missing = [p for p in list(APT_PACKAGES) + list(added) if not _installed(p)]
+    if missing:
+        return StepResult(name, False,
+                          "These packages did not install on the new medic: "
+                          + ", ".join(missing[:8]) + ("..." if len(missing) > 8 else "")
+                          + ". Press Retry.")
+    return StepResult(name, True,
+                      f"Installed every package this medic carries ({len(files)} "
+                      "files, offline), including "
+                      + (f"{len(added)} it added since it was imaged."
+                         if added else "Dire Wolf for radio work."))
+
+
 
 
 #: Settings that travel to EVERY clone: the band the fleet is on (a clone
 #: on the standard 915.125 MHz would be deaf to an 868 MHz fleet and births
 #: nodes into a different mesh) and the keeper's language.
-SETTINGS_ALWAYS = ("radio_defaults.json", "language")
+SETTINGS_ALWAYS = ("radio_defaults.json", "language",
+                   # what this medic installed after imaging: tool state, so it
+                   # reaches a new community's clone too (see wheelhouse)
+                   "packages_added.txt")
 #: The records folder follows the home folder's rule. A clone that stays in
 #: this medic's fleet takes ALL of it, except RECORDS_NEVER (this medic's own
 #: identity, trust, setup state and messages) and what a step of its own

@@ -11,6 +11,8 @@ import os
 import re
 import subprocess
 
+import pytest
+
 from workflows import clone, wheelhouse
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -231,3 +233,104 @@ def test_clutter_never_travels_and_the_arduino_downloads_stay_behind():
     for kind in ("*.log", "*.bak", "*.bak-*", "__pycache__", ".cache"):
         assert kind in clone.CLUTTER, kind
     assert "/staging" in clone._home_entry_skips(".arduino15")
+
+
+# ---- packages: everything installed after imaging travels -----------------
+
+def test_dpkg_log_installs_reads_plain_and_rotated_logs(tmp_path):
+    import gzip
+    from workflows import wheelhouse as wh
+    (tmp_path / "dpkg.log").write_text(
+        "2026-10-01 10:00:00 install sshpass:arm64 <none> 1.10-1\n"
+        "2026-10-01 10:00:01 upgrade gpsd:arm64 3.25 3.26\n"
+        "2026-10-01 10:00:02 status installed sshpass:arm64 1.10-1\n")
+    with gzip.open(tmp_path / "dpkg.log.2.gz", "wt") as fh:
+        fh.write("2026-07-14 09:00:00 install rpiboot:arm64 <none> 20250908\n")
+    assert wh.dpkg_log_installs(str(tmp_path / "dpkg.log*")) == {"sshpass", "rpiboot"}
+
+
+def test_added_packages_keeps_a_ledger_and_leaves_out_what_every_card_has(tmp_path):
+    from workflows import wheelhouse as wh
+    log = tmp_path / "dpkg.log"
+    log.write_text("x y install libusb-1.0-0-dev:arm64 <none> 1\n"
+                   "x y install unicode-data:all <none> 1\n"
+                   "x y install wayvnc:arm64 <none> 1\n"
+                   "x y install bash:arm64 <none> 1\n"
+                   "x y install sshpass:arm64 <none> 1\n")
+    ledger = tmp_path / "packages_added.txt"
+    ledger.write_text("# old\nisympy3\ngone-package\n")
+    got = wh.added_packages(logs=str(log), ledger=str(ledger), base={"bash"},
+                            installed={"libusb-1.0-0-dev", "unicode-data", "wayvnc",
+                                       "bash", "sshpass", "isympy3"})
+    # bash: on every card; sshpass: a baseline package; wayvnc: never; gone: removed
+    assert got == ("isympy3", "libusb-1.0-0-dev", "unicode-data")
+    kept = ledger.read_text()
+    assert "isympy3" in kept and "gone-package" not in kept and "libusb-1.0-0-dev" in kept
+
+
+def test_the_ledger_reaches_every_clone():
+    assert "packages_added.txt" in clone.SETTINGS_ALWAYS
+
+
+def _install(monkeypatch, store, c=None):
+    from tests.test_clone import wf, _run
+    monkeypatch.setattr(clone, "_carried_debs", lambda: store)
+    return _run(wf(c), "install_carried_packages")
+
+
+@pytest.mark.real_package_store
+def test_an_empty_store_stops_the_clone_instead_of_skipping(monkeypatch):
+    r = _install(monkeypatch, ([], (), [], []))
+    assert r.success is False and "Field readiness" in r.message
+
+
+@pytest.mark.real_package_store
+def test_a_package_the_parent_cannot_hand_on_is_named(monkeypatch):
+    r = _install(monkeypatch, (["/c/a.deb"], ("libusb-1.0-0-dev",), [], ["libusb-1.0-0-dev"]))
+    assert r.success is False and "libusb-1.0-0-dev" in r.message and "internet" in r.message
+
+
+@pytest.mark.real_package_store
+def test_a_package_that_does_not_install_stops_the_clone(monkeypatch):
+    from tests.test_clone import conn
+    c = conn()
+    c.rules.insert(0, ("dpkg-query -W -f='${Status}' direwolf", 1, "", "not installed"))
+    r = _install(monkeypatch, (["/c/a.deb"], (), [], []), c)
+    assert r.success is False and "direwolf" in r.message
+
+
+@pytest.mark.real_package_store
+def test_everything_installed_means_the_step_passes(monkeypatch):
+    r = _install(monkeypatch, (["/c/a.deb"], ("unicode-data",), ["/c/u.deb"], []))
+    assert r.success is True and "1 it added" in r.message
+
+
+def test_ensure_added_plan_fetches_only_when_the_store_falls_short(tmp_path, monkeypatch):
+    from workflows import wheelhouse as wh
+    calls = []
+
+    class C:
+        def run(self, cmd, timeout=30):
+            calls.append(cmd)
+            return (0, "", "")
+    monkeypatch.setattr(wh, "carried_package_names", lambda d=None: {"unicode-data"})
+    monkeypatch.setattr(wh, "planned_debs", lambda name, d=None: [])
+    _files, short = wh.ensure_added_plan(("unicode-data",), str(tmp_path), connection=C())
+    assert not calls and short == []
+    _files, short = wh.ensure_added_plan(("unicode-data", "isympy3"), str(tmp_path),
+                                         connection=C())
+    assert calls and ".plan-added" in calls[0] and short == ["isympy3"]
+
+
+def test_the_store_refresh_also_plans_what_was_added(monkeypatch):
+    from workflows import wheelhouse as wh
+    ran = []
+
+    class C:
+        def run(self, cmd, timeout=30):
+            ran.append(cmd)
+            return (0, "3", "") if "wc -l" in cmd else (0, "", "")
+    monkeypatch.setattr(wh, "added_packages", lambda *a, **k: ("unicode-data",))
+    monkeypatch.setattr(wh, "deb_count", lambda c, d=None: 5)
+    ok, msg = wh.cache_debs(C())
+    assert ok and any(".plan-added" in c for c in ran) and "added since imaging" in msg

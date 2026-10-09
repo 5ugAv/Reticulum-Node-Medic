@@ -295,7 +295,11 @@ downloading); one that stopped part-way carries what it has.
 - the Python wheelhouse in `assets/packages/` with this medic's own frozen
   versions (`requirements-parent.txt`), and the `.deb` cache in
   `assets/packages/debs` (the `cage` display stack, Dire Wolf, ALSA and the
-  tools);
+  tools) together with **every package this medic installed after it was
+  imaged**, read from dpkg's own log, kept in `packages_added.txt` in its
+  records and planned against a fresh card so what those packages rest on
+  comes too. The clone installs all of it or stops and names what is missing;
+  nothing is optional;
 - the medic's Kivy config (the doubled-tap cure), its offline maps (cleaned of
   anything that points at the parent's home), its monitoring records and its
   fleet roster, and the service that keeps filling the world map whenever the
