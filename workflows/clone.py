@@ -386,11 +386,15 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
     # Ask dpkg, not PATH: gpsd lives in /usr/sbin, which a normal user's PATH
     # does not include — the Wi-Fi-off proof clone called a perfect offline
     # install a failure that way (2026-10-06).
-    def _installed(pkg):
-        code, out, _e = wf.connection.run(
-            f"dpkg-query -W -f='${{Status}}' {pkg} 2>/dev/null")
-        return code == 0 and "install ok installed" in (out or "")
-    missing = [p for p in list(APT_PACKAGES) + list(added) if not _installed(p)]
+    must = list(APT_PACKAGES) + list(added)
+    # one question for the whole list, not one login per package (184 on
+    # Node Medic 2, about two minutes of a clone spent asking)
+    _c, out, _e = wf.connection.run(
+        "dpkg-query -W -f='${Package} ${Status}\\n' " + " ".join(must) + " 2>/dev/null",
+        timeout=120)
+    have = {l.split()[0] for l in (out or "").splitlines()
+            if l.strip().endswith("install ok installed")}
+    missing = [p for p in must if p not in have]
     if missing:
         return StepResult(name, False,
                           "These packages did not install on the new medic: "

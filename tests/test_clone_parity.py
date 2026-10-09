@@ -293,15 +293,24 @@ def test_a_package_the_parent_cannot_hand_on_is_named(monkeypatch):
 @pytest.mark.real_package_store
 def test_a_package_that_does_not_install_stops_the_clone(monkeypatch):
     from tests.test_clone import conn
+    from workflows.wheelhouse import APT_PACKAGES
     c = conn()
-    c.rules.insert(0, ("dpkg-query -W -f='${Status}' direwolf", 1, "", "not installed"))
+    c.rules.insert(0, ("dpkg-query -W -f='${Package} ${Status}", 0,
+                       "".join(f"{p} install ok installed\n" for p in APT_PACKAGES
+                               if p != "direwolf"), ""))
     r = _install(monkeypatch, (["/c/a.deb"], (), [], []), c)
     assert r.success is False and "direwolf" in r.message
 
 
 @pytest.mark.real_package_store
 def test_everything_installed_means_the_step_passes(monkeypatch):
-    r = _install(monkeypatch, (["/c/a.deb"], ("unicode-data",), ["/c/u.deb"], []))
+    from tests.test_clone import conn
+    from workflows.wheelhouse import APT_PACKAGES
+    c = conn()
+    c.rules.insert(0, ("dpkg-query -W -f='${Package} ${Status}", 0,
+                       "".join(f"{p} install ok installed\n"
+                               for p in list(APT_PACKAGES) + ["unicode-data"]), ""))
+    r = _install(monkeypatch, (["/c/a.deb"], ("unicode-data",), ["/c/u.deb"], []), c)
     assert r.success is True and "1 it added" in r.message
 
 
