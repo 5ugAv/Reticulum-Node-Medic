@@ -98,7 +98,7 @@ with a keyboard, or over SSH.
   `git clone https://github.com/5ugAv/Reticulum-Node-Medic.git ~/reticulum-tool`
 - Run the setup:
   `python3 ~/reticulum-tool/scripts/setup_medic.py`
-- Wait. It prints one line per step, 30 steps, and takes an hour or more on a
+- Wait. It prints one line per step, 31 steps, and takes an hour or more on a
   good connection (the board cores and PlatformIO are a few gigabytes, and it
   compiles eight firmware images). Success ends with the line
   `Node Medic is set up.`
@@ -136,21 +136,22 @@ on this machine.
 | 13 | Boot into Node Medic | cage kiosk unit, Goodix touch retry, touch-only udev rule, empty pointer theme, `i2c-dev`, NetworkManager kept off `usb0` | **same** `configure_autostart` |
 | 14 | Recovery boot order | EEPROM `BOOT_ORDER=0xf321` (SD, network, RPIBOOT) | **same** `bake_recovery_bootorder` |
 | 15 | Card-writing helper | `/usr/local/lib/nodemedic/prepare-card` | **same** `install_card_helper` |
-| 16 | Own SSH key | `~/.ssh/id_ed25519` | **same** `ensure_ssh_keypair` |
-| 17 | arduino-cli 1.5.1 | official release, SHA-256 checked, into `~/.local/bin` | `carry_the_toolchain` |
-| 18 | Board cores | esp32 2.0.17, adafruit:nrf52 1.7.0, Heltec_nRF52 1.6.0 (its UF2 step switched off), rakwireless:nrf52 1.3.3 | `carry_the_toolchain` |
-| 19 | Arduino libraries | the manifest's 18, each at its pin, `--no-deps` | `carry_the_toolchain` |
-| 20 | Firmware sources | six trees, each fetched at its pinned commit | `carry_the_toolchain` |
-| 21 | Tracker, EoRa-S3, MeshPocket images | each board's own `RNodeBoard.compile_command` in its tree | `carry_the_toolchain` |
-| 22 | Heltec V4 colour image | `HeltecV4RGBWorkflow`'s source patches and compile | `carry_the_toolchain` |
-| 23 | PlatformIO | telemetry off, espressif32 6.13.0, every RTNode-2400 env's packages | `carry_the_toolchain` |
-| 24 | RTNode-2400 compiles | one PlatformIO env and the three nRF52 Makefile targets, once | `carry_the_toolchain` |
-| 25 | Raspberry Pi OS Lite image | the pinned 2026-06-18 image to `~/pi_os_lite.img.xz`, SHA-256 checked | `carry_the_toolchain` |
-| 26 | Field caches | Settings ▸ Field readiness ▸ *Prepare for the field*, pressed from here: RNode firmware 1.86, the phone apps, the wheelhouse, this medic's own package versions frozen for its clones, the `.deb` plan | `transfer_firmware_cache`, `transfer_tool` |
-| 27 | World map | `scripts/world-map-fill.service` for this user, started; it carries on in the background | `copy_offline_maps` |
-| 28 | Check the finished medic | | **same** `final_verification` |
-| 29 | Node Medic running | the kiosk unit active (true after the restart) | `confirm_tool_running` |
-| 30 | Restart | only with `--reboot`, only when nothing failed, never while the medic is busy | `restart_into_tool` |
+| 16 | Radio set-up helper | `/usr/local/lib/nodemedic/radio-units`, the root helper the walkthrough's radio page runs | **same** `install_radio_helper` |
+| 17 | Own SSH key | `~/.ssh/id_ed25519` | **same** `ensure_ssh_keypair` |
+| 18 | arduino-cli 1.5.1 | official release, SHA-256 checked, into `~/.local/bin` | `carry_the_toolchain` |
+| 19 | Board cores | esp32 2.0.17, adafruit:nrf52 1.7.0, Heltec_nRF52 1.6.0 (its UF2 step switched off), rakwireless:nrf52 1.3.3 | `carry_the_toolchain` |
+| 20 | Arduino libraries | the manifest's 18, each at its pin, `--no-deps` | `carry_the_toolchain` |
+| 21 | Firmware sources | six trees, each fetched at its pinned commit | `carry_the_toolchain` |
+| 22 | Tracker, EoRa-S3, MeshPocket images | each board's own `RNodeBoard.compile_command` in its tree | `carry_the_toolchain` |
+| 23 | Heltec V4 colour image | `HeltecV4RGBWorkflow`'s source patches and compile | `carry_the_toolchain` |
+| 24 | PlatformIO | telemetry off, espressif32 6.13.0, every RTNode-2400 env's packages | `carry_the_toolchain` |
+| 25 | RTNode-2400 compiles | one PlatformIO env and the three nRF52 Makefile targets, once | `carry_the_toolchain` |
+| 26 | Raspberry Pi OS Lite image | the pinned 2026-06-18 image to `~/pi_os_lite.img.xz`, SHA-256 checked | `carry_the_toolchain` |
+| 27 | Field caches | Settings ▸ Field readiness ▸ *Prepare for the field*, pressed from here: RNode firmware 1.86, the phone apps, the wheelhouse, this medic's own package versions frozen for its clones, the `.deb` plan | `transfer_firmware_cache`, `transfer_tool` |
+| 28 | World map | `scripts/world-map-fill.service` for this user, started; it carries on in the background | `copy_offline_maps` |
+| 29 | Check the finished medic | | **same** `final_verification` |
+| 30 | Node Medic running | the kiosk unit active (true after the restart) | `confirm_tool_running` |
+| 31 | Restart | only with `--reboot`, only when nothing failed, never while the medic is busy | `restart_into_tool` |
 
 Three clone steps have nothing to do here: `copy_kin_roster` (there is no
 fleet to inherit), `stamp_lineage` (there is no parent; About reads the git
@@ -187,10 +188,25 @@ finished its setup opens the **setup walkthrough** (`provisioning/first_use.py`,
 
 ## Known gaps in this path
 
-Stated plainly, from the repository as it is on 2026-10-08:
+Stated plainly, from the repository as it is on 2026-10-09:
 
-- **The setup has not yet been run end-to-end on a Pi 5.** It was written on
-  2026-10-08 and checked without one:
+- **The setup has not yet been run end-to-end on a Pi 5.** It has run end to
+  end once, on 2026-10-09, from the public repository, in a virtual machine
+  built like a fresh card on a Pi 5: Debian trixie on arm64 with every package
+  the 2026-06-18 Lite card carries, Raspberry Pi's own package server and
+  sources, a first user with passwordless sudo, no git, no screen. Following
+  the steps above word for word, every step passed in 19 minutes except the
+  boot chip, which a virtual machine has not got, and the NetworkManager rule,
+  which needs the NetworkManager folder every real card has (the machine had
+  no NetworkManager; given the folder, the step passed). A second run skipped
+  every finished step in two seconds. Node Medic then started under its own
+  cage kiosk on a virtual screen, with no errors, and opened the setup
+  walkthrough. That run found one fault, now fixed: a package source that apt
+  names by anything but `http`/`https` (Debian's cloud images use
+  `mirror+file:`) silently dropped those packages from the clone's `.deb`
+  plan: it planned 22 screen packages where Node Medic 1 plans 86, and still
+  reported the caches complete. The plan now stops and names the source; with
+  Raspberry Pi OS's own sources it planned the same packages as Node Medic 1. Before that, the setup was checked without a Pi:
   - its tests drive every step against an emulated machine;
   - every pin was checked against its source: every Python pin exists on PyPI
     for Python 3.13 on aarch64; every Arduino library version is in the Library
@@ -210,9 +226,9 @@ Stated plainly, from the repository as it is on 2026-10-08:
     core's UF2 step (below), and a check that looked for `firmware.bin` where
     the RTNode-2400 tree names its image `rtnode_<variant>.bin`.
 
-  Only a Pi 5 can prove the aarch64 parts: apt, the kiosk, the boot chip, the
-  RAK core's install through the borrowed `nrfjprog`, and the run as a whole.
-  Anything the first real run finds belongs in this list.
+  Only a Pi 5 can prove what the virtual machine could not: the boot chip, the
+  kiosk on a real screen and touch panel, and the run on a Pi's own card,
+  network and power. Anything the first real run finds belongs in this list.
 - **The medic's own radio still needs the keeper and the Tracker**, as on a
   clone: `rnsd`, `lxmd` and the Reticulum config come from the walkthrough's
   radio page, not from the setup.

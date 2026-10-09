@@ -173,7 +173,7 @@ def _uri_lines(packages) -> str:
     return (f"apt-get install --reinstall --print-uris -qq {names} 2>/dev/null"
             " | tr -d \"'\""
             ' | awk \'{split($4, a, ":"); print $1, $2, a[1], a[2]}\''
-            " | grep -E '^https?://'")
+            " | " + ONLY_DOWNLOADABLE)
 
 
 #: THE CLONE'S OWN STARTING POINT. The package list (/var/lib/dpkg/status) of
@@ -309,6 +309,20 @@ def ensure_added_plan(added, deb_dir: str = DEB_CACHE, connection=None) -> tuple
     return (planned_debs("added", deb_dir) or []), short
 
 
+#: Passes the planned files the medic can download and STOPS on any other:
+#: apt can name a package by a source wget cannot read (Debian's cloud images
+#: use "mirror+file:"), and a filter that kept only http(s) lines silently
+#: dropped every Debian package from the plan: 22 screen packages planned
+#: where Node Medic 1 plans 86, and the caches still reported complete
+#: (GitHub-route rehearsal, 2026-10-09). A short plan must never pass for a
+#: whole one.
+ONLY_DOWNLOADABLE = (
+    "awk '/^https?:\\/\\// {print; next} "
+    "NF {if (!bad) print \"apt names a package source this medic cannot "
+    "download from: \" $1 \" (use plain http or https sources, as Raspberry "
+    "Pi OS ships)\" > \"/dev/stderr\"; bad=1} END {exit bad}'")
+
+
 def plan_uri_lines(packages, status: str = CLONE_BASE_STATUS) -> str:
     """``url filename algo hash`` for what a card in *status*'s state needs to
     install *packages* — new packages AND the upgrades they force, nothing
@@ -324,7 +338,7 @@ def plan_uri_lines(packages, status: str = CLONE_BASE_STATUS) -> str:
             f"install --no-install-recommends --print-uris -qq {names} 2>/dev/null"
             " | tr -d \"'\""
             ' | awk \'{split($4, a, ":"); print $1, $2, a[1], a[2]}\''
-            " | grep -E '^https?://'")
+            " | " + ONLY_DOWNLOADABLE)
 
 
 def planned_download_command(list_name: str, packages, dest: str = DEB_CACHE,
@@ -334,7 +348,7 @@ def planned_download_command(list_name: str, packages, dest: str = DEB_CACHE,
     planned nothing — an unsolvable set prints no URIs at all."""
     plan = f".plan-{list_name}"
     return (f"mkdir -p {dest} && cd {dest} && " + plan_uri_lines(packages, status)
-            + f" > {plan}; [ -s {plan} ] || {{ echo 'apt planned nothing for "
+            + f" > {plan} || exit 4; [ -s {plan} ] || {{ echo 'apt planned nothing for "
             f"{list_name}' >&2; exit 3; }}; "
             f"while read -r u f algo h; do [ -s \"$f\" ] || wget -q -O \"$f\" \"$u\"; "
             f"done < {plan} && awk '{{print $2}}' {plan} > {list_name}.list && "

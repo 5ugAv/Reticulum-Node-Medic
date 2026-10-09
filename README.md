@@ -541,7 +541,8 @@ and ticked as it is closed. The largest open items, summarised honestly:
 - **The clone test has not been passed from a GitHub checkout.** The clone
   needs carried `.deb`s, wheels, a Pi OS image and firmware trees that are
   gitignored or outside the repo; a fresh checkout gets them from
-  `scripts/setup_medic.py`, which has not yet been run end-to-end on a Pi 5
+  `scripts/setup_medic.py`, which has run end to end only in a virtual
+  machine built like a fresh Pi 5 card (2026-10-09), not yet on a Pi 5
   (ledger #115, #154).
 - **The clone's automatic lock-down is proven on one real clone, for one of
   its two cases.** On 2026-10-09 it locked Node Medic 2, a clone in its

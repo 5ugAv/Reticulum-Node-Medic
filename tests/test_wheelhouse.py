@@ -176,3 +176,35 @@ def test_the_offline_install_is_dpkg_not_apt():
     from workflows import wheelhouse as w
     cmd = w.offline_install_command("/tmp/nm-debs")
     assert cmd == "dpkg -i /tmp/nm-debs/*.deb" and "apt" not in cmd
+
+
+def _run_filter(lines):
+    import subprocess
+    from workflows import wheelhouse as w
+    return subprocess.run(["/bin/sh", "-c", w.ONLY_DOWNLOADABLE], input=lines,
+                          capture_output=True, text=True)
+
+
+def test_a_source_the_medic_cannot_download_from_stops_the_plan():
+    """Debian's cloud images name packages by "mirror+file:"; a filter that
+    kept only http(s) lines dropped every Debian package: 22 screen packages
+    planned where Node Medic 1 plans 86, passing for a whole plan
+    (GitHub-route rehearsal, 2026-10-09)."""
+    good = ("http://deb.debian.org/debian/pool/a.deb a.deb MD5Sum 11\n"
+            "http://archive.raspberrypi.com/debian/pool/b.deb b.deb SHA256 22\n")
+    r = _run_filter(good)
+    assert r.returncode == 0 and len(r.stdout.splitlines()) == 2 and not r.stderr
+    r = _run_filter(good + "mirror+file:/etc/apt/mirrors/debian.list/pool/c.deb "
+                           "c.deb MD5Sum 33\n")
+    assert r.returncode != 0
+    assert "mirror+file:" in r.stderr and "cannot download" in r.stderr
+
+
+def test_every_download_path_uses_the_stopping_filter():
+    from workflows import wheelhouse as w
+    for cmd in (w.plan_uri_lines(w.DISPLAY_PACKAGES, "/s"),
+                w.apt_download_command(w.DISPLAY_PACKAGES, "/d"),
+                w.verify_debs_command(w.DISPLAY_PACKAGES, "/d")):
+        assert w.ONLY_DOWNLOADABLE in cmd and "grep -E '^https?://'" not in cmd
+    cmd = w.planned_download_command("display", w.DISPLAY_PACKAGES, "/d", "/s")
+    assert "> .plan-display || exit 4;" in cmd
