@@ -69,11 +69,11 @@ def test_every_firmware_folder_the_code_builds_from_has_a_pinned_source():
 def test_every_pinned_tree_is_one_a_clone_carries_without_history():
     """One architecture: what the GitHub route fetches is what a clone
     receives from its parent."""
-    roots = [r for r, _why, _req in clone.CARRIED_TREES]
     for path in TREES:
-        assert any(path == r or path.startswith(r + "/") for r in roots), path
-        assert any(path == r or path.startswith(r + "/")
-                   for r in clone.HISTORY_FREE_TREES), path
+        top = path[2:].split("/")[0]
+        # carried (not in the never list), and without history (not hidden)
+        assert path.startswith("~/") and top not in clone.HOME_NEVER, path
+        assert ".git" in clone._home_entry_skips(top), path
 
 
 def test_every_board_built_here_has_a_build_recipe():

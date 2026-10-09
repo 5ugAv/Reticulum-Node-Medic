@@ -109,12 +109,12 @@ def test_the_app_shelf_never_refreshes_on_a_metered_link_and_the_doc_says_so():
 # -- #127 / #126 -----------------------------------------------------------
 
 def test_developer_scratch_never_rides_to_a_clone():
-    from workflows.clone import TOOL_EXCLUDES, CARRIED_TREES
+    from workflows.clone import TOOL_EXCLUDES, REQUIRED, HOME_NEVER
     for name in (".git", ".claude", ".local-backups", "*.log", "typescript", ".kivy",
                  "docs/previews", ".venv", "htmlcov"):
         assert name in TOOL_EXCLUDES, name
-    assert [p for p, _w, req in CARRIED_TREES if req] == ["~/pi_os_lite.img.xz"]
-    assert any(p == "~/.platformio" for p, _w, _r in CARRIED_TREES)
+    assert REQUIRED == ("pi_os_lite.img.xz",)
+    assert ".platformio" not in HOME_NEVER
 
 
 # -- #81 / #188 ------------------------------------------------------------

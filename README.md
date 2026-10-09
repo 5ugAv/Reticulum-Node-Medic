@@ -273,7 +273,9 @@ rest of the app runs.
   real flow since 2026-08-25. The medic images a card for the new Pi 5 from its
   own reader, finds the new machine over an ethernet cable or Wi-Fi, logs in
   with its own key, and runs a ladder of named steps shown one row each on
-  screen: copy the tool, the firmware cache, the toolchains and OS image;
+  screen: copy the tool, the firmware cache and the parent's whole home
+  folder (toolchains, firmware, the OS image and anything added since), minus
+  a short list of what must never travel, each entry with its reason;
   install the Python stack from carried wheels and the screen stack from
   carried `.deb`s; hand down the maps, records and fleet roster; give the new
   medic its **own fresh identity** (never a key copy), stamp its lineage,

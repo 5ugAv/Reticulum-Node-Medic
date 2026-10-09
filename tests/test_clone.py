@@ -430,24 +430,23 @@ def test_carry_fails_when_a_required_tree_is_missing(monkeypatch):
     w = wf()
     r = _run(w, "carry_the_toolchain")
     assert r.success is False
-    # only the OS image is required now (readiness ledger #126): a parent
-    # built from GitHub has no toolchains yet and must still be able to clone
+    # only the OS image is required (readiness ledger #126): a parent built
+    # from GitHub has no toolchains yet and must still be able to clone
     assert "pi_os_lite" in r.message
-    assert [p for p, _w, req in clone.CARRIED_TREES if req] == ["~/pi_os_lite.img.xz"]
+    assert clone.REQUIRED == ("pi_os_lite.img.xz",)
 
 
 def test_optional_trees_are_skipped_not_fatal(monkeypatch):
     """A medic that never had an RTNode tree must still be able to make a medic."""
-    import os as _os
-    required = {p for p, _w, req in clone.CARRIED_TREES if req}
-    monkeypatch.setattr("os.path.exists",
-                        lambda p: any(_os.path.expanduser(r) == p
-                                      for r in required))
-    monkeypatch.setattr("os.path.isdir", lambda p: True)
+    monkeypatch.setattr("os.listdir", lambda p: ["pi_os_lite.img.xz", ".arduino15"])
+    monkeypatch.setattr("os.path.exists", lambda p: True)
+    monkeypatch.setattr("os.path.islink", lambda p: False)
+    monkeypatch.setattr("os.path.isdir", lambda p: p.endswith(".arduino15"))
+    monkeypatch.setattr("os.path.isfile", lambda p: p.endswith(".xz"))
     w = wf()
     r = _run(w, "carry_the_toolchain")
     assert r.success is True
-    assert "not carried" in r.message
+    assert "home folder" in r.message
 
 
 def test_the_tracker_build_dir_is_actually_carried():
@@ -455,17 +454,17 @@ def test_the_tracker_build_dir_is_actually_carried():
     rnode_flash.TRACKER_BUILD_DIR points at must be inside something the clone
     sends, or the new medic cannot flash its own firstborn."""
     from workflows import rnode_flash
-    carried = [p for p, _w, _r in clone.CARRIED_TREES]
     tracker = rnode_flash.TRACKER_BUILD_DIR
-    assert any(tracker.startswith(p) for p in carried), (
-        f"{tracker} is carried by nothing - the clone will fail at its firstborn")
+    top = tracker[2:].split("/")[0]
+    assert tracker.startswith("~/") and top not in clone.HOME_NEVER, (
+        f"{tracker} would stay behind - the clone would fail at its firstborn")
 
 
 def test_scratch_is_not_carried():
     """Working images and one-off build dirs must not travel: gigabytes, and it
     passes this medic's mess on as if it were the tool."""
-    assert "imgwork" in clone.CARRY_SKIP
-    assert not any("imgwork" in p for p, _w, _r in clone.CARRIED_TREES)
+    assert "imgwork" in clone.CARRY_SKIP and "imgwork" in clone.HOME_NEVER
+    assert "scratch" in clone.HOME_NEVER and "this-medic" in clone.HOME_NEVER
 
 
 def test_the_carried_install_is_judged_by_dpkg_not_path():
@@ -482,15 +481,17 @@ def test_the_clone_carries_the_medics_own_python_packages_and_settings():
     scripts on Node Medic 2 (2026-10-06); and the band the fleet is on must
     travel or the clone is deaf to it."""
     from workflows import clone as cl
-    paths = [p for p, _why, _req in cl.CARRIED_TREES]
-    assert "~/.local/lib" in paths and paths.index("~/.local/bin") < paths.index("~/.local/lib")
+    # ~/.local travels whole except desktop data: lib and bin both go
+    assert ".local" not in cl.HOME_NEVER
+    assert set(cl.CLUTTER_IN[".local"]) == {"/share", "/state"}
     assert "radio_defaults.json" in cl.SETTINGS_ALWAYS and "language" in cl.SETTINGS_ALWAYS
-    assert "forgotten.json" in cl.SETTINGS_WITH_FLEET
+    # the fleet's records travel by default; only what is named stays behind
+    assert "forgotten.json" not in cl.RECORDS_NEVER
     # the board picker's memory holds chip MACs: a MAC never leaves the medic
     picker = "board_" + "memory.json"
     for never in ("trust.json", "location_salt", "onboard.json", "first_use.json",
                   "tool_identity.json", picker, "board_traits.json"):
-        assert never not in cl.SETTINGS_ALWAYS + cl.SETTINGS_WITH_FLEET
+        assert never in cl.RECORDS_NEVER and never not in cl.SETTINGS_ALWAYS
     from tests.srcutil import func_source
     assert "_carry_settings(wf)" in func_source("workflows/clone.py", "copy_monitoring_db")
     auto = func_source("workflows/clone.py", "configure_autostart")

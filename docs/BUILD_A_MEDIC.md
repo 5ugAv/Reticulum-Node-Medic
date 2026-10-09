@@ -268,26 +268,38 @@ Stated plainly, from the repository as it is on 2026-10-08:
 ## What a parent medic must carry to clone
 
 The clone ladder (`workflows/clone.py`, shown one row per step on the Clone
-screen) moves these from the parent to the child. If the parent lacks one, the
-corresponding step fails or names it rather than faking it. A medic set up with
+screen) moves these from the parent to the child. Its rule is to take
+everything the parent has and leave behind only what a short list in the code
+names, each entry with its reason, so nothing new has to be remembered to
+travel. Only the Pi OS image is required; without it the clone stops and says
+so. A medic set up with
 `scripts/setup_medic.py` has every item below once the setup has finished (its
 records and fleet roster start empty, and the world map may still be
 downloading); one that stopped part-way carries what it has.
 
 - the tool tree itself, minus `.git` and caches;
 - the offline RNode firmware cache at `~/.config/rnodeconf/update`;
-- the toolchains and trees in `CARRIED_TREES`: `~/.arduino15`, `~/.platformio`,
-  `~/.local/bin` (arduino-cli, esptool, rnodeconf, adafruit-nrfutil, pio),
-  `~/.local/lib`, `~/Arduino`, the Pi OS image `~/pi_os_lite.img.xz` (required),
-  and the firmware trees `~/overlay_test`, `~/RNode_Firmware`, `~/MeshPocket`,
-  `~/EoRa-S3`, `~/RTNode-2400`, `~/rnm-assets` — the trees without their git
-  history;
+- the parent's **whole home folder**, minus `HOME_NEVER`: its own identity and
+  keys, personal and desktop files, and clutter (caches, logs, backups, the
+  `~/scratch` work folder and `~/this-medic`). That carries the toolchains
+  (`~/.arduino15` without its 1 GB of download leftovers, `~/.platformio`,
+  `~/.local`), the Arduino libraries, the Pi OS image `~/pi_os_lite.img.xz`,
+  the firmware trees and anything added later. Folders that are not hidden
+  travel without their git history. A clone for a new community gets every
+  folder but no loose file except the OS image;
+- the records in `~/.reticulum-node-medic`: a clone in the parent's fleet takes
+  all of them except the parent's own identity, trust, setup state and
+  messages (`RECORDS_NEVER`), so boundary walks, certificates, host keys and
+  any record added later travel by themselves; a clone for a new community
+  takes only the radio defaults and the language;
 - the Python wheelhouse in `assets/packages/` with this medic's own frozen
   versions (`requirements-parent.txt`), and the `.deb` cache in
   `assets/packages/debs` (the `cage` display stack, Dire Wolf, ALSA and the
   tools);
-- the medic's Kivy config (the doubled-tap cure), its offline maps, its
-  monitoring records and its fleet roster;
+- the medic's Kivy config (the doubled-tap cure), its offline maps (cleaned of
+  anything that points at the parent's home), its monitoring records and its
+  fleet roster, and the service that keeps filling the world map whenever the
+  medic is online;
 - the card helper source (`assets/scripts/prepare_card.py`) and the radio
   set-up helper (`assets/scripts/radio_units.py`), both installed root-owned on
   the child, and a fresh SSH keypair generated **on** the child;

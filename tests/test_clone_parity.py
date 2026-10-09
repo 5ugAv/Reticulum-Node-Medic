@@ -17,8 +17,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 
 def _carried(path):
-    return any(path == root or path.startswith(root.rstrip("/") + "/")
-               for root, _why, _req in clone.CARRIED_TREES)
+    """A home path travels unless its top folder is on the never list."""
+    return path.startswith("~/") and path[2:].split("/")[0] not in clone.HOME_NEVER
 
 
 def test_every_firmware_folder_the_code_builds_from_is_carried():
@@ -34,7 +34,7 @@ def test_every_firmware_folder_the_code_builds_from_is_carried():
 
 
 def test_the_eora_s3_tree_travels():
-    assert "~/EoRa-S3" in [p for p, _w, _r in clone.CARRIED_TREES]
+    assert _carried("~/EoRa-S3/RNode_Firmware_CE")
 
 
 def _fresh_card_packages():
@@ -115,10 +115,10 @@ def test_every_firmware_source_tree_travels_without_its_history():
     """Unpublished commits keep the address they were made under; two on Node
     Medic 1 held a personal e-mail. Source trees go without .git, toolchains
     keep theirs (a git-installed PlatformIO platform may need it)."""
-    firmware = {"~/overlay_test", "~/RNode_Firmware", "~/MeshPocket",
-                "~/EoRa-S3", "~/RTNode-2400", "~/rnm-assets"}
-    assert firmware <= set(clone.HISTORY_FREE_TREES)
-    assert "~/.platformio" not in clone.HISTORY_FREE_TREES
+    for tree in ("overlay_test", "RNode_Firmware", "MeshPocket", "EoRa-S3",
+                 "RTNode-2400", "rnm-assets", "Arduino"):
+        assert tree not in clone.HOME_NEVER and ".git" in clone._home_entry_skips(tree)
+    assert ".git" not in clone._home_entry_skips(".platformio")
 
 
 def test_the_carry_step_drops_git_history_from_firmware_trees(monkeypatch):
@@ -128,8 +128,12 @@ def test_the_carry_step_drops_git_history_from_firmware_trees(monkeypatch):
     w.connection.push_tree = lambda local, remote, exclude=(): (
         sent.__setitem__(remote, tuple(exclude)) or True)
     w.connection.push_file = lambda local, remote: True
+    monkeypatch.setattr("os.listdir", lambda p: [".platformio", "EoRa-S3", "rnm-assets",
+                                                  "pi_os_lite.img.xz"])
     monkeypatch.setattr("os.path.exists", lambda p: True)
+    monkeypatch.setattr("os.path.islink", lambda p: False)
     monkeypatch.setattr("os.path.isdir", lambda p: not p.endswith(".xz"))
+    monkeypatch.setattr("os.path.isfile", lambda p: p.endswith(".xz"))
     idx = next(i for i, (n, _) in enumerate(w.steps) if n == "carry_the_toolchain")
     assert w.steps[idx][1](w).success
     assert ".git" in sent["~/EoRa-S3"] and ".git" in sent["~/rnm-assets"]
@@ -149,28 +153,81 @@ def _records_the_code_writes():
         with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as f:
             src = f.read()
         names |= set(re.findall(r"~/\.reticulum-node-medic/([A-Za-z0-9_.-]+)", src))
+        # a path built in pieces: join(home, ".reticulum-node-medic", "name")
+        names |= set(re.findall(r"\.reticulum-node-medic[\"']\s*,\s*[\"']([A-Za-z0-9_.-]+)[\"']",
+                                src))
         if re.search(r"^\s*_?[A-Z_]*DIR\s*=\s*[\"']~/\.reticulum-node-medic[\"']", src, re.M):
             names |= set(re.findall(r"^\s*_?[A-Z][A-Z_]*_FILE\s*=\s*[\"']([A-Za-z0-9_.-]+)[\"']",
                                     src, re.M))
     return {n for n in names if n not in ("", ".", "..")}
 
 
-def test_every_record_the_code_writes_is_classified_for_the_clone():
-    """Node Medic 2 showed a walked node with no range ring: the walk files
-    were in no carry list (keeper, 2026-10-09). Every record must be carried,
-    carried by its own step, or named as staying behind with a reason."""
+def test_the_never_lists_name_only_real_records_each_with_a_reason():
+    """Records travel with the fleet by default now (keeper, 2026-10-09); the
+    never list is the only list, so it must stay honest: every entry names a
+    record the code really writes, and says why it stays."""
     names = _records_the_code_writes()
     assert {"walk_observations.jsonl", "walk_anchors.json", "registry.json"} <= names, names
-    known = (set(clone.SETTINGS_ALWAYS) | set(clone.SETTINGS_WITH_FLEET)
-             | set(clone.RECORDS_OWN_STEP) | set(clone.RECORDS_NEVER))
-    unclassified = sorted(names - known)
-    assert not unclassified, f"records the clone does not know about: {unclassified}"
+    stale = sorted(set(clone.RECORDS_NEVER) - names)
+    assert not stale, f"never-list entries the code no longer writes: {stale}"
+    assert all(why.strip() for why in clone.RECORDS_NEVER.values())
+    assert all(why.strip() for why in clone.HOME_NEVER.values())
 
 
 def test_what_the_fleet_has_learned_travels_and_identity_never_does():
-    fleet = set(clone.SETTINGS_WITH_FLEET)
-    assert {"walk_anchors.json", "walk_observations.jsonl", "walk_failures.jsonl",
-            "walk_diagnoses.jsonl", "certificates", "firmware_backups",
-            "known_hosts"} <= fleet
-    carried = set(clone.SETTINGS_ALWAYS) | fleet | set(clone.RECORDS_OWN_STEP)
-    assert not carried & set(clone.RECORDS_NEVER), carried & set(clone.RECORDS_NEVER)
+    learned = {"walk_anchors.json", "walk_observations.jsonl", "walk_failures.jsonl",
+               "walk_diagnoses.jsonl", "certificates", "firmware_backups",
+               "known_hosts", "forgotten.json", "node_watch.json", "relay_census.json"}
+    assert not learned & (set(clone.RECORDS_NEVER) | set(clone.RECORDS_OWN_STEP))
+    for own in (".ssh", ".reticulum", ".gitconfig", "gps_state.json", ".lxmd"):
+        assert own in clone.HOME_NEVER, own
+
+
+def _records_run(monkeypatch, fresh):
+    from tests.test_clone import wf
+    w = wf(); w.fresh_fleet = fresh
+    trees, files = {}, []
+    w.connection.push_tree = lambda local, remote, exclude=(): (
+        trees.__setitem__(remote, tuple(exclude)) or True)
+    w.connection.push_file = lambda local, remote: files.append(remote) or True
+    monkeypatch.setattr("os.path.isdir", lambda p: True)
+    monkeypatch.setattr("os.path.isfile", lambda p: True)
+    note = clone._carry_settings(w)
+    return note, trees, files
+
+
+def test_a_fleet_clone_takes_every_record_but_this_medics_own(monkeypatch):
+    note, trees, files = _records_run(monkeypatch, fresh=False)
+    skips = trees[clone.CLONE_DIR]
+    assert "/trust.json" in skips and "/chat" in skips and "/registry.json" in skips
+    assert not any("walk_" in s for s in skips) and "*.bak*" not in skips
+    assert "*.log" in skips and not files and "records" in note
+
+
+def test_a_new_communitys_clone_takes_no_fleet_record(monkeypatch):
+    note, trees, files = _records_run(monkeypatch, fresh=True)
+    assert not trees
+    assert sorted(f.rsplit("/", 1)[1] for f in files) == sorted(clone.SETTINGS_ALWAYS)
+
+
+def test_a_new_communitys_clone_gets_no_loose_personal_file(monkeypatch):
+    from tests.test_clone import wf
+    w = wf(); w.fresh_fleet = True
+    sent = []
+    w.connection.push_tree = lambda local, remote, exclude=(): sent.append(remote) or True
+    w.connection.push_file = lambda local, remote: sent.append(remote) or True
+    monkeypatch.setattr("os.listdir", lambda p: ["pi_os_lite.img.xz", "bench-notes.md",
+                                                  "ui.log", "overlay_test", ".gitconfig"])
+    monkeypatch.setattr("os.path.exists", lambda p: True)
+    monkeypatch.setattr("os.path.islink", lambda p: False)
+    monkeypatch.setattr("os.path.isdir", lambda p: p.endswith("overlay_test"))
+    monkeypatch.setattr("os.path.isfile", lambda p: not p.endswith("overlay_test"))
+    idx = next(i for i, (n, _) in enumerate(w.steps) if n == "carry_the_toolchain")
+    assert w.steps[idx][1](w).success
+    assert sorted(sent) == ["~/overlay_test", "~/pi_os_lite.img.xz"]
+
+
+def test_clutter_never_travels_and_the_arduino_downloads_stay_behind():
+    for kind in ("*.log", "*.bak", "*.bak-*", "__pycache__", ".cache"):
+        assert kind in clone.CLUTTER, kind
+    assert "/staging" in clone._home_entry_skips(".arduino15")

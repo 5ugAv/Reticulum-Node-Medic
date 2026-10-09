@@ -46,59 +46,108 @@ CLONE_DIR = "~/.reticulum-node-medic"
 REMOTE_REQUIREMENTS = f"{REMOTE_TOOL_DIR}/assets/requirements.txt"
 REMOTE_WHEELS = f"{REMOTE_TOOL_DIR}/assets/packages"
 
-#: Everything a medic needs to make ANOTHER medic that does NOT already live
-#: inside the tool tree. Without these the clone inherits the code, the Python
-#: stack, the maps and the roster - but cannot build firmware, image a card, or
-#: birth its own first radio. That is a copy of a medic, not a medic.
+#: A clone takes this medic's WHOLE home folder, minus what is named below.
 #:
-#: Found the hard way: the first clone reached its firstborn step and stopped
-#: with "the medic's Tracker fork build is missing" and "arduino-cli not
-#: installed", because TRACKER_BUILD_DIR points at ~/overlay_test - outside
-#: TOOL_ROOT - and nothing installed a toolchain.
+#: The default is inverted on purpose (keeper, 2026-10-09: "We shouldn't give
+#: the medic an option to miss anything"). The old rule was a hand-kept list of
+#: what to carry, so everything new started out missing: the EoRa-S3 tree and
+#: the boundary walks were both left behind because nobody had listed them.
+#: Now a new folder, toolchain or firmware tree travels by itself; only what is
+#: named here, with its reason, stays behind.
 #:
-#: (path, why it travels, required)
-#:
-#: Only the OS image is REQUIRED: without it the clone cannot make the next
-#: card, which is the one thing a medic must be able to do. The toolchains
-#: and firmware trees travel when the parent has them and are NAMED when it
-#: does not — a parent built from GitHub has none of them yet, and the
-#: whole clone used to stop at that step (readiness ledger #126).
-CARRIED_TREES = (
-    ("~/.arduino15", "the ESP32 and nRF52 toolchains arduino-cli installs", False),
-    ("~/.platformio", "the PlatformIO toolchain and package cache, so pio builds offline", False),
-    ("~/.local/bin", "arduino-cli, esptool, rnodeconf, adafruit-nrfutil, pio", False),
-    # the medic's OWN Python packages, exactly as installed — pio and
-    # esptool.py in ~/.local/bin are dead scripts without them (Node Medic 2:
-    # "No module named 'platformio'", 2026-10-06); same Pi 5 / Python 3.13
-    ("~/.local/lib", "this medic's own Python packages (platformio, esptool, patched rns)", False),
-    ("~/Arduino", "Arduino libraries the firmware builds include", False),
-    ("~/pi_os_lite.img.xz", "the Pi OS image, so the clone can image the NEXT card", True),
-    ("~/overlay_test", "the Tracker firmware fork - its firstborn's radio", False),
-    ("~/RNode_Firmware", "the RNode firmware fork", False),
-    ("~/MeshPocket", "the MeshPocket RNode port", False),
-    # the EoRa-S3 RNode port builds from its own CE tree (rnode_boards
-    # build_dir). It was never on this list, so no clone could birth an
-    # EoRa-S3 (parity sweep against Node Medic 2, 2026-10-08).
-    ("~/EoRa-S3", "the EoRa-S3 RNode port", False),
-    ("~/RTNode-2400", "the RTNode-2400 firmware", False),
-    ("~/rnm-assets", "RTNode-2400 build assets", False),
-)
+#: What never travels falls into a few fixed kinds, so this list does not grow
+#: with the tool: this medic's own identity and keys, what a step of its own
+#: carries, personal and desktop files, and clutter. Work files belong in
+#: ~/scratch and things kept for this medic alone in ~/this-medic; neither
+#: ever travels, so a clone of a clone is no bigger than its parent.
+HOME_NEVER = {
+    # identity, keys and trust: one per unit, never copied
+    ".ssh": "this medic's own keys; the clone makes its own",
+    ".gnupg": "this medic's own signing keys",
+    ".gitconfig": "the keeper's own git identity",
+    ".git-credentials": "saved logins",
+    ".netrc": "saved logins",
+    ".reticulum": "this medic's Reticulum identity; the clone makes a fresh one",
+    ".lxmd": "this medic's own messaging node and its store",
+    ".nodemedic-vault": "this medic's encrypted records",
+    ".nodemedic-vault.img": "this medic's encrypted records",
+    ".rnm-health": "a node's own health state, never a medic's",
+    "gps_state.json": "this medic's own last position fix",
+    ".sudo-scope-confirmed": "this medic's own lock-down record",
+    ".nodemedic-sudo-confirmed": "this medic's own lock-down record",
+    ".nodemedic-ssh-confirmed": "this medic's own lock-down record",
+    ".sudo_as_admin_successful": "a marker of this machine's admin use",
+    # carried by a step of their own
+    "reticulum-tool": "the tool itself: carried by transfer_tool",
+    ".reticulum-node-medic": "the records: carried by their own rule (RECORDS_NEVER)",
+    ".config": "this machine's program settings; the RNode firmware cache "
+               "inside it is carried by transfer_firmware_cache",
+    # personal and desktop
+    "Desktop": "personal files", "Documents": "personal files",
+    "Downloads": "personal files", "Music": "personal files",
+    "Pictures": "personal files", "Public": "personal files",
+    "Templates": "personal files", "Videos": "personal files",
+    ".bash_history": "this machine's command history",
+    ".python_history": "this machine's command history",
+    ".lesshst": "this machine's command history",
+    ".viminfo": "this machine's command history",
+    ".wget-hsts": "this machine's download history",
+    ".Xauthority": "a desktop session key", ".ICEauthority": "a desktop session key",
+    ".xsession-errors": "a desktop log", ".xsession-errors.old": "a desktop log",
+    ".dbus": "desktop session state", ".pki": "a browser's certificates",
+    ".mozilla": "a browser profile",
+    # work files and clutter
+    "scratch": "work files: disposable by design",
+    "this-medic": "kept for this medic alone",
+    "reticulum-tool-check": "the deploy sandbox, a scratch copy of the tool",
+    ".cache": "caches, rebuilt on demand",
+    ".venv": "test environments", ".venvs": "test environments",
+    ".venv-test": "test environments",
+}
 
-#: Scratch that must NOT travel: working images, one-off build dirs, backups of
-#: a particular board, and anything a debugging session left behind. Carrying
-#: these would add gigabytes and pass on this medic's mess as if it were the
-#: tool.
+#: Development leftovers named before Node Medic 1's home was tidied into
+#: ~/scratch, so a parent that was never tidied cannot pass them on.
 CARRY_SKIP = ("imgwork", "techo-test", "tracker_build", "supreme_build",
               "upstream_pr", "pr115_alt", "dev_pristine", "pr126_dev",
               "upstream_baseline")
+for _name in CARRY_SKIP:
+    HOME_NEVER.setdefault(_name, "development leftovers")
 
-#: Firmware SOURCE trees travel without their git history. No firmware build
-#: reads it (checked 2026-10-08: no Makefile, platformio.ini or build script
-#: calls git), and history is where unpublished commits keep the address they
-#: were made under: two on Node Medic 1 carried a personal e-mail that the
-#: next clone would have handed to another community (parity sweep).
-HISTORY_FREE_TREES = ("~/overlay_test", "~/RNode_Firmware", "~/MeshPocket",
-                      "~/EoRa-S3", "~/RTNode-2400", "~/rnm-assets")
+#: Clutter that never travels from inside anything that does, at any depth:
+#: caches, compiled Python, logs and backups (rsync --exclude patterns).
+CLUTTER = ("__pycache__", "*.pyc", "*.log", "*.out", "*.pid", "*.bak", "*.bak-*",
+           "*.bak.*", "*.old", ".cache")
+#: Clutter at one known place inside a folder that travels, anchored to that
+#: folder's top so a same-named folder deeper down is untouched.
+CLUTTER_IN = {
+    # download archives arduino-cli keeps after unpacking them: 1 GB on Node
+    # Medic 1, carried by every clone until 2026-10-09
+    ".arduino15": ("/staging",),
+    ".local": ("/share", "/state"),       # desktop data and histories
+    ".kivy": ("/logs",),
+}
+#: Loose files in the home folder that a clone for a NEW community still gets.
+#: Anything else lying loose there may be the keeper's own and stays in the
+#: fleet; folders travel either way.
+TOOL_FILES = ("pi_os_lite.img.xz",)
+#: Without the OS image a medic cannot make the next card.
+REQUIRED = ("pi_os_lite.img.xz",)
+
+
+def _home_entry_skips(name: str) -> tuple:
+    """The rsync excludes for one folder of the home that travels. Folders
+    that are not hidden (the firmware trees, the Arduino libraries, anything
+    added later) go without their git history: unpublished commits keep the
+    address they were made under, and two on Node Medic 1 carried a personal
+    e-mail. No firmware build reads it. Hidden toolchain folders keep theirs:
+    a platform installed from source may need it."""
+    skips = CLUTTER + CLUTTER_IN.get(name, ())
+    return skips if name.startswith(".") else skips + (".git",)
+
+
+def _is_clutter_file(name: str) -> bool:
+    import fnmatch
+    return any(fnmatch.fnmatch(name, pat) for pat in CLUTTER if "*" in pat)
 
 
 _CLONE_STEPS: List[Tuple[str, Callable]] = []
@@ -189,44 +238,55 @@ def transfer_firmware_cache(wf: "CloneWorkflow") -> StepResult:
 
 @clone_step
 def carry_the_toolchain(wf: "CloneWorkflow") -> StepResult:
-    """Copy the toolchains, firmware trees and OS image the clone needs to be a
-    medic in its own right rather than a read-only copy of one.
+    """Copy this medic's home folder to the new medic, whole: the toolchains,
+    the firmware trees, the OS image and anything added since, minus
+    HOME_NEVER and clutter. Nothing has to be listed to travel.
 
-    This is the step that makes replication actually transitive: after it, the
-    new medic can build firmware, flash a board, image a card and clone again -
-    with no internet, and without this medic.
-
-    Several gigabytes, so it is the slowest step by a wide margin. Missing
-    OPTIONAL trees are skipped and named rather than failing: a medic that never
-    had an RTNode tree should still be able to make a medic.
+    This is the step that makes replication transitive: after it, the new
+    medic can build firmware, flash a board, image a card and clone again,
+    with no internet and without this medic. Several gigabytes, so it is the
+    slowest step by a wide margin.
     """
     import os
-    sent, skipped, failed = [], [], []
-    for path, why, required in CARRIED_TREES:
-        local = os.path.expanduser(path)
-        if not os.path.exists(local):
-            (failed if required else skipped).append(f"{path} ({why})")
+    home = os.path.expanduser("~")
+    fresh = bool(getattr(wf, "fresh_fleet", False))
+    missing = [n for n in REQUIRED if not os.path.exists(os.path.join(home, n))]
+    if missing:
+        return StepResult(
+            "carry_the_toolchain", False,
+            "This medic has no Pi OS image (" + ", ".join(missing) + "), so the "
+            "new medic could not make the next card. Put the image back on this "
+            "medic, then press Retry.")
+    sent, failed = [], []
+    for name in sorted(os.listdir(home)):
+        if name in HOME_NEVER:
             continue
-        remote = path
+        local = os.path.join(home, name)
+        if os.path.islink(local):
+            continue
+        remote = f"~/{name}"
         if os.path.isdir(local):
             wf.connection.run(f"mkdir -p {remote}")
-            skip = CARRY_SKIP + ((".git",) if path in HISTORY_FREE_TREES else ())
-            ok = wf.connection.push_tree(local, remote, exclude=skip)
-        else:
+            ok = wf.connection.push_tree(local, remote, exclude=_home_entry_skips(name))
+        elif os.path.isfile(local):
+            if _is_clutter_file(name) or (fresh and name not in TOOL_FILES):
+                continue
             ok = wf.connection.push_file(local, remote) if hasattr(
-                wf.connection, "push_file") else wf.connection.push_tree(
-                    os.path.dirname(local), os.path.dirname(remote) or "~")
-        (sent if ok else failed).append(path)
+                wf.connection, "push_file") else wf.connection.push_tree(home, "~")
+        else:
+            continue
+        (sent if ok else failed).append(name)
     if failed:
         return StepResult(
             "carry_the_toolchain", False,
-            "The new medic did not get everything it needs to build firmware: "
-            + ", ".join(failed) + ". Without these it can run, but it cannot "
-            "birth its own radio or make another medic.")
-    msg = f"Carried {len(sent)} toolchain/firmware trees."
-    if skipped:
-        msg += f" Not on this medic, so not carried: {', '.join(skipped)}."
-    return StepResult("carry_the_toolchain", True, msg)
+            "The new medic did not get everything from this medic: "
+            + ", ".join(failed) + ". Check the network cable at both ends, or "
+            "try another cable, then press Retry.")
+    return StepResult(
+        "carry_the_toolchain", True,
+        f"Carried this medic's home folder ({len(sent)} items: toolchains, "
+        "firmware, the OS image and everything added since), minus its own "
+        "identity, personal files and clutter.")
 
 
 @clone_step
@@ -346,28 +406,13 @@ def install_carried_packages(wf: "CloneWorkflow") -> StepResult:
 #: on the standard 915.125 MHz would be deaf to an 868 MHz fleet and births
 #: nodes into a different mesh) and the keeper's language.
 SETTINGS_ALWAYS = ("radio_defaults.json", "language")
-#: Settings that travel only when the fleet does (same keeper): the
-#: tombstones that keep retired radios from reappearing, certificates,
-#: alert/watch choices and screen habits. Identity, trust, salt, first-use
-#: and the board picker's memory (it holds boards' chip MACs — a MAC never
-#: leaves the medic; the guard test enforces it) stay behind.
-SETTINGS_WITH_FLEET = ("forgotten.json", "certificates", "beacon_targets.json",
-                       "node_watch.json", "operator_address", "datetime.json",
-                       "screensaver.json", "brightness", "auto_backpack", "home_profile",
-                       # What this medic has LEARNED about the fleet's nodes also
-                       # travels, so the next keeper does not repeat the work. The
-                       # boundary walks were never carried: Node Medic 2 showed
-                       # Skyfinger with no range ring although Node Medic 1 had
-                       # walked it (keeper, 2026-10-09).
-                       "walk_anchors.json", "walk_observations.jsonl",
-                       "walk_failures.jsonl", "walk_diagnoses.jsonl",
-                       "relay_census.json", "synapse_links.json",
-                       # the nodes' SSH host keys this medic pinned, so the clone
-                       # checks the same keys rather than trusting on first use
-                       "known_hosts",
-                       "alerts.json", "retention.json",
-                       # a board's original firmware, saved before it was reflashed
-                       "firmware_backups")
+#: The records folder follows the home folder's rule. A clone that stays in
+#: this medic's fleet takes ALL of it, except RECORDS_NEVER (this medic's own
+#: identity, trust, setup state and messages) and what a step of its own
+#: carries (RECORDS_OWN_STEP). A new kind of record therefore travels with the
+#: fleet without anyone listing it: the boundary walks did not, because the
+#: old list never named them (keeper, 2026-10-09). A clone for a NEW community
+#: takes only SETTINGS_ALWAYS: no fleet record reaches another community.
 
 #: Records the clone carries through a step of their own.
 RECORDS_OWN_STEP = {"registry.json": "copy_monitoring_db",
@@ -406,28 +451,30 @@ RECORDS_NEVER = {
 
 
 def _carry_settings(wf: "CloneWorkflow") -> str:
-    """Copy this medic's settings files into the clone's CLONE_DIR; a short
-    note for the step, "" when nothing was there to copy."""
-    names = list(SETTINGS_ALWAYS)
-    if not getattr(wf, "fresh_fleet", False):
-        names += list(SETTINGS_WITH_FLEET)
+    """Copy this medic's records to the clone (see the rule above); a short
+    note for the step, "" when there was nothing to copy."""
     local_dir = os.path.expanduser(CLONE_DIR)
-    carried = 0
+    if not os.path.isdir(local_dir):
+        return ""
     wf.connection.run(f"mkdir -p {CLONE_DIR}")
-    for name in names:
-        src = os.path.join(local_dir, name)
-        try:
-            if os.path.isdir(src):
-                ok = wf.connection.push_tree(src, f"{CLONE_DIR}/{name}")
-            elif os.path.isfile(src):
-                ok = wf.connection.push_file(src, f"{CLONE_DIR}/{name}")
-            else:
-                continue
-        except Exception as exc:                                 # noqa: BLE001
-            print("[clone] setting not carried:", name, exc, flush=True)
-            continue
-        carried += 1 if ok else 0
-    return f" Carried {carried} settings." if carried else ""
+    if getattr(wf, "fresh_fleet", False):
+        carried = 0
+        for name in SETTINGS_ALWAYS:
+            src = os.path.join(local_dir, name)
+            if os.path.isfile(src):
+                try:
+                    carried += 1 if wf.connection.push_file(src, f"{CLONE_DIR}/{name}") else 0
+                except Exception as exc:                         # noqa: BLE001
+                    print("[clone] setting not carried:", name, exc, flush=True)
+        return f" Carried {carried} settings." if carried else ""
+    skips = tuple("/" + n for n in list(RECORDS_NEVER) + list(RECORDS_OWN_STEP)) + CLUTTER
+    try:
+        ok = wf.connection.push_tree(local_dir, CLONE_DIR, exclude=skips)
+    except Exception as exc:                                     # noqa: BLE001
+        print("[clone] records not carried:", exc, flush=True)
+        ok = False
+    return (" Carried this medic's records about the fleet." if ok else
+            " The fleet's records did not copy; press Retry.")
 
 
 @clone_step
@@ -758,9 +805,16 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     wf.connection.run(priv + "modprobe i2c-dev || true")
     wf.connection.run("grep -q '^i2c-dev' /etc/modules || "
                       "echo i2c-dev | " + priv + "tee -a /etc/modules")
+    # the world map keeps filling in whenever the new medic is online, as it
+    # does on Node Medic 1 (parity, 2026-10-09)
+    from workflows.medic_setup import render_world_map_unit
+    with open(os.path.join(TOOL_ROOT, "scripts", "world-map-fill.service"),
+              encoding="utf-8") as fh:
+        world_map = render_world_map_unit(fh.read(), user, home)
     for path, content in (
             ("/etc/systemd/system/reticulum-node-medic.service", unit),
             ("/etc/systemd/system/goodix-rebind.service", rebind),
+            ("/etc/systemd/system/world-map-fill.service", world_map),
             ("/etc/udev/rules.d/71-nodemedic-touch-only.rules", touch_rule)):
         heredoc = (f"{priv}tee {path} >/dev/null <<'RNMUNIT'\n"
                    f"{content}\nRNMUNIT")
@@ -770,7 +824,7 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     wf.connection.run(f"{priv}systemctl daemon-reload")
     code = wf.connection.run(
         f"{priv}systemctl enable reticulum-node-medic.service "
-        "goodix-rebind.service")[0]
+        "goodix-rebind.service world-map-fill.service")[0]
     return StepResult("configure_autostart", code == 0,
                       "Kiosk autostart + touch retry enabled — the clone "
                       "boots into the tool on its own screen." if code == 0
