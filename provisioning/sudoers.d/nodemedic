@@ -6,10 +6,11 @@
 #
 # THE USER. This file names `nodemedic`, the original medic's account. A CLONE
 # runs as `pi`: security/render_sudoers.sh renders the account into the grant
-# line and the two rules that carry a user name (setfacl u:<user>:rw, usermod
-# dialout <user>) at install time, together with the machine's backlight. With
-# the default user the file installs exactly as written. Every clone gets this
-# file from its parent's clone flow (workflows/clone.py, harden_new_medic).
+# line, the account's Defaults line and the two rules that carry a user name
+# (setfacl u:<user>:rw, usermod dialout <user>) at install time, together with
+# the machine's backlight. With the default user the file installs exactly as
+# written. Every clone gets this file from its parent's clone flow
+# (workflows/clone.py, harden_new_medic).
 #
 # Every alias below maps to a specific privileged call the Kivy app makes on the
 # medic ITSELF (grep-verified against the repo, 2026-07; re-swept 2026-10-08 for
@@ -122,32 +123,44 @@ Cmnd_Alias NM_UHUBCTL = \
     /usr/sbin/uhubctl, \
     /usr/sbin/uhubctl -l * -p * -a *
 
+# --- Card mounts: where, and how (every rule that mounts a card) ------------
+# Since 2026-10-08 every card the app mounts goes to a folder under
+# /run/nodemedic (provisioning/card_mount.py), never /tmp:
+#   * /run is root's, so these folders are root's. The app creates them with
+#     ONE exact rule each (`install -d ... /run/nodemedic /run/nodemedic/<x>`,
+#     owner root, mode 0755 so the app can still READ a mounted card), and it
+#     cannot put anything of its own in their place.
+#   * the mount is pinned whole: one option string, a device pattern made of
+#     single-character classes (no `*`, which spans — WILDCARDS above), one
+#     folder. The options are the same for every card:
+#       nosymfollow  a symbolic link stored on the card is never followed
+#       nodev        a device file stored on the card opens nothing
+#       nosuid, noexec  nothing on the card gains privilege or runs
+#     so a file root writes into one of these folders (the tee and touch rules
+#     below) lands on the card and nowhere else. nosymfollow needs Linux 5.10
+#     and util-linux 2.38: Debian 12 or later, which every medic runs.
+#   * tee, touch and umount name exact files and folders.
+# The medic's own system disk is mmcblk0 on this build, and no rule names it —
+# a medic that boots from something else MUST re-derive the device patterns
+# rather than widen them. The Python guards (sd_edit.medic_root_disk,
+# pi_imager.is_safe_target) still refuse the medic's own disk; this is the
+# layer that holds when Python is bypassed.
+
 # --- Inserted-SD boot editing (bake wired-link reachability) -----------------
 # provisioning/sd_edit.py  bake_reachability_via_sd() mounts a USB SD reader's
-# boot partition at /tmp/nm_sd_boot and edits config.txt / cmdline.txt.
-#
-# THE SOURCE IS PINNED, NOT JUST THE TARGET. `mount * /tmp/nm_sd_boot` allowed
-# ANY block device to be mounted there — and the same alias grants tee to that
-# directory's config.txt and cmdline.txt, so mounting the medic's own boot
-# partition and adding `init=/bin/sh` to its kernel command line was a root
-# escalation from the passwordless set. Verified on the live medic 2026-08-11:
-# with the sudo timestamp dropped, `sudo -n mount /dev/mmcblk0p1
-# /tmp/nm_sd_boot` was PERMITTED by sudo — mount itself refused it, and only
-# because that partition happens to already be mounted at /boot/firmware. An
-# accident is not a control.
-#
-# So: USB card readers (/dev/sd*) and a second MMC controller (/dev/mmcblk1*,
-# a built-in reader) only. (The `*` still spans — see WILDCARDS above; these
-# rules are on the reviewed list in tests/test_privileged_commands.py.) The
-# medic's own system disk is mmcblk0 on this build — a clone that boots from
-# something else MUST re-derive this line rather than widen it. The Python guard (medic_root_disk) still refuses the
-# medic's own disk; this is the layer that holds when Python is bypassed.
+# boot partition at /run/nodemedic/sd_boot and edits config.txt / cmdline.txt.
+# workflows/mitosis_card.py verify_medic_card() reads a new medic's card back
+# through the same folder (its boot partition) and through
+# /run/nodemedic/piboot below (its root partition).
+# USB card readers (/dev/sdX<n>) and a second MMC controller (/dev/mmcblk1p<n>,
+# a built-in reader) only.
 Cmnd_Alias NM_SD_EDIT = \
-    /usr/bin/mount /dev/sd* /tmp/nm_sd_boot, \
-    /usr/bin/mount /dev/mmcblk1* /tmp/nm_sd_boot, \
-    /usr/bin/umount /tmp/nm_sd_boot, \
-    /usr/bin/tee /tmp/nm_sd_boot/config.txt, \
-    /usr/bin/tee /tmp/nm_sd_boot/cmdline.txt
+    /usr/bin/install -d -m 0755 -o root -g root /run/nodemedic /run/nodemedic/sd_boot, \
+    /usr/bin/mount -o nosymfollow\,nodev\,nosuid\,noexec /dev/sd[a-z][0-9] /run/nodemedic/sd_boot, \
+    /usr/bin/mount -o nosymfollow\,nodev\,nosuid\,noexec /dev/mmcblk1p[0-9] /run/nodemedic/sd_boot, \
+    /usr/bin/umount /run/nodemedic/sd_boot, \
+    /usr/bin/tee /run/nodemedic/sd_boot/config.txt, \
+    /usr/bin/tee /run/nodemedic/sd_boot/cmdline.txt
 
 # --- On-medic Pi SD imaging (BIRTH of a fresh node's card) ------------------
 # provisioning/pi_imager.py  flash() writes Pi OS to a USB card reader.
@@ -155,23 +168,25 @@ Cmnd_Alias NM_SD_EDIT = \
 # it can never be the medic's system disk.
 #
 # THE DEVICE PATTERNS ARE PINNED TO USB READERS. `dd of=/dev/*` let anyone with
-# the app's shell overwrite the medic's own system disk without a password, and
-# `mount * /tmp/rnm-piboot` had the same hole as NM_SD_EDIT above. /dev/sd* is
-# what a USB card reader enumerates as; the medic's own disk is mmcblk0. A
-# clone that boots from a different device must re-derive these, never widen
-# them.
+# the app's shell overwrite the medic's own system disk without a password.
+# /dev/sd* is what a USB card reader enumerates as; the medic's own disk is
+# mmcblk0. A clone that boots from a different device must re-derive these,
+# never widen them.
 # dd's target is ONE character class, not `*`: a `*` there spans arguments
 # (WILDCARDS above) and would let a caller add dd operands of their own
 # (2026-10-08). provisioning/pi_imager.py write_image_command() writes the
 # whole card, /dev/sdX, exactly in this form.
+# /run/nodemedic/piboot is a fresh card's boot partition for pi_imager's
+# first-boot seed (custom.toml, ssh), and the new medic's ROOT partition for
+# the clone check (workflows/mitosis_card.py); card mounts as described above.
 Cmnd_Alias NM_IMAGING = \
     /usr/bin/dd of=/dev/sd[a-z] bs=4M conv=fsync status=progress, \
     /usr/sbin/partprobe /dev/sd*, \
-    /usr/bin/mkdir -p /tmp/rnm-piboot, \
-    /usr/bin/mount /dev/sd* /tmp/rnm-piboot, \
-    /usr/bin/umount /tmp/rnm-piboot, \
-    /usr/bin/tee /tmp/rnm-piboot/custom.toml, \
-    /usr/bin/touch /tmp/rnm-piboot/ssh, \
+    /usr/bin/install -d -m 0755 -o root -g root /run/nodemedic /run/nodemedic/piboot, \
+    /usr/bin/mount -o nosymfollow\,nodev\,nosuid\,noexec /dev/sd[a-z][0-9] /run/nodemedic/piboot, \
+    /usr/bin/umount /run/nodemedic/piboot, \
+    /usr/bin/tee /run/nodemedic/piboot/custom.toml, \
+    /usr/bin/touch /run/nodemedic/piboot/ssh, \
     /usr/bin/sync, \
     /usr/local/lib/nodemedic/prepare-card --device /dev/sd* --config /tmp/*
 
@@ -265,6 +280,15 @@ Cmnd_Alias NM_DIAG = \
     /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyAMA[0-9][0-9], \
     /usr/bin/setfacl -m u\:nodemedic\:rw /dev/ttyS[0-9], \
     /usr/sbin/usermod -aG dialout nodemedic
+
+# ---------------------------------------------------------------------------
+# A password is never remembered for the app account. The medic's sudo keeps
+# one time stamp for all of an account's sessions (timestamp_type=global), so
+# a password the keeper types for this account would otherwise hold for every
+# process of it for minutes after. With 0, only the exact rules above ever run
+# without one. Rendered for the account like the grant line below.
+# ---------------------------------------------------------------------------
+Defaults:nodemedic timestamp_timeout=0
 
 # ---------------------------------------------------------------------------
 # The single grant. The app user (`nodemedic` here; rendered as `pi` on a

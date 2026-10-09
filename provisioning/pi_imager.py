@@ -19,6 +19,8 @@ import shlex
 import time as _time
 from typing import Callable, Dict, List, Optional, Tuple
 
+from provisioning import card_mount
+
 Runner = Callable[[list], Tuple[int, str]]
 
 #: Where a carried, ready-to-flash Pi OS image lives (xz-compressed).
@@ -560,12 +562,13 @@ def apply_config_commands(device_path: str, custom_toml: str,
     dev = shlex.quote(device_path)
     # boot partition is p1 (mmcblk-style 'p1') or '1' (sdX1)
     part = f"{device_path}p1" if device_path[-1].isdigit() else f"{device_path}1"
-    part = shlex.quote(part)
-    mnt = "/tmp/rnm-piboot"
+    # root-owned, mounted with the policy's pinned options (card_mount), so the
+    # tee and touch below land on the card and nowhere else
+    mnt = card_mount.PIBOOT
     toml_b64 = base64.b64encode(custom_toml.encode()).decode()
     cmds = [
         "sudo partprobe " + dev + " 2>/dev/null; sleep 1",
-        f"sudo mkdir -p {mnt} && sudo mount {part} {mnt}",
+        f"sudo {card_mount.make_dir(mnt)} && sudo {card_mount.mount(part, mnt)}",
         f"echo {shlex.quote(toml_b64)} | base64 -d | sudo tee {mnt}/custom.toml >/dev/null",
         f"sudo touch {mnt}/ssh",
     ]
@@ -596,7 +599,7 @@ def build_cloud_init_meta_data(instance_id: str) -> str:
 
 
 def reseed_commands(device_path: str, user_data: str, instance_id: str,
-                    network_config: str = "", mnt: str = "/tmp/rnm-reseed"
+                    network_config: str = "", mnt: str = card_mount.RESEED
                     ) -> List[str]:
     """Rewrite a card's cloud-init seed WITHOUT re-imaging it.
 
@@ -608,7 +611,7 @@ def reseed_commands(device_path: str, user_data: str, instance_id: str,
     part = f"{device_path}p1" if device_path[-1].isdigit() else f"{device_path}1"
     q = shlex.quote(mnt)
     cmds = [f"sudo partprobe {shlex.quote(device_path)} 2>/dev/null; sleep 1",
-            f"sudo mkdir -p {q} && sudo mount {shlex.quote(part)} {q}",
+            f"sudo {card_mount.make_dir(mnt)} && sudo {card_mount.mount(part, mnt)}",
             f"test -f {q}/config.txt && test -f {q}/cmdline.txt"]
     for name, content in (("user-data", user_data),
                           ("meta-data", build_cloud_init_meta_data(instance_id)),
@@ -657,7 +660,7 @@ def reseed(device_path: str, hostname: str, username: str, password: str,
 def activate_account_commands(device_path: str, username: str,
                               password_hash: str,
                               authorized_keys: "Optional[List[str]]" = None,
-                              mnt: str = "/tmp/rnm-piroot-user") -> List[str]:
+                              mnt: str = card_mount.PIROOT_USER) -> List[str]:
     """Mount the card's rootfs and turn its shipped-but-DISABLED account into a
     working login, then read back proof.
 
@@ -670,7 +673,7 @@ def activate_account_commands(device_path: str, username: str,
     from provisioning.rootfs_user import activate_commands
     part = f"{device_path}p2" if device_path[-1].isdigit() else f"{device_path}2"
     q = shlex.quote(mnt)
-    cmds = [f"sudo mkdir -p {q} && sudo mount {shlex.quote(part)} {q}",
+    cmds = [f"sudo {card_mount.make_dir(mnt)} && sudo {card_mount.mount(part, mnt)}",
             f"test -f {q}/etc/passwd && test -f {q}/etc/shadow"]
     cmds += activate_commands(mnt, username, password_hash, authorized_keys)
     cmds.append(f"sudo sync && sudo umount {q}")

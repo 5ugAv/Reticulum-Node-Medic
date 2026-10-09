@@ -94,11 +94,16 @@ class Cmnd:
 
 
 class Policy:
-    """The aliases and THE grant line for one user, from a rendered policy."""
+    """The aliases, the account's Defaults and THE grant line for one user,
+    from a rendered policy."""
 
     def __init__(self, text: str, user: str):
         joined = text.replace("\\\n", " ")
         self.aliases = {}
+        #: settings from ``Defaults:<user> ...`` lines, in order. A Defaults
+        #: line for anyone else, or a global one, is an unexpected line: this
+        #: file may only set things for its own account.
+        self.defaults: List[str] = []
         grant = None
         for line in joined.splitlines():
             s = line.strip()
@@ -107,6 +112,10 @@ class Policy:
             m = re.match(r"Cmnd_Alias\s+([A-Z0-9_]+)\s*=\s*(.+)$", s)
             if m:
                 self.aliases[m.group(1)] = [Cmnd(c) for c in split_unescaped(m.group(2))]
+                continue
+            m = re.match(rf"Defaults:{re.escape(user)}\s+(.+)$", s)
+            if m:
+                self.defaults += split_unescaped(m.group(1))
                 continue
             m = re.match(rf"{re.escape(user)}\s+ALL\s*=\s*\(root\)\s+NOPASSWD:\s*(.+)$", s)
             if m:
