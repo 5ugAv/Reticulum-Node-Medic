@@ -164,7 +164,7 @@ The firmware sources (all published; `firmware_trees` in the manifest):
 | `~/RNode_Firmware` | 5ugAv/RNode_Firmware | `medic-cross` @ 2da8bc3 | the Heltec V4 colour image |
 | `~/overlay_test/RNode_Firmware` | 5ugAv/RNode_Firmware | `jonesey` @ eb861d7 | the Heltec Wireless Tracker image |
 | `~/EoRa-S3/RNode_Firmware_CE` | 5ugAv/RNode_Firmware | `eora-s3` @ b574a82 | the Ebyte EoRa-S3 image |
-| `~/MeshPocket/RNode_Firmware_CE` | 5ugAv/HELTEC-MeshPocket-RNode | `main` @ acee20c | the Heltec MeshPocket DFU package |
+| `~/MeshPocket/RNode_Firmware_CE` | 5ugAv/HELTEC-MeshPocket-RNode | `main` @ 2a4fb1f | the Heltec MeshPocket and T114-with-GPS DFU packages |
 | `~/RTNode-2400` | 5ugAv/RTNode-2400 | `techo-support` @ 3a09717 | RTNode-2400-NM for T-Echo, RAK4631, T114 |
 | `~/rnm-assets/RTNode2400` | 5ugAv/RTNode-2400 | `feature/neopixel-status-led` @ 8cccdea | RTNode-2400-NM for the ESP32-S3 boards |
 

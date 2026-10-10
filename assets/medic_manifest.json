@@ -148,8 +148,8 @@
       "path": "~/MeshPocket/RNode_Firmware_CE",
       "repo": "https://github.com/5ugAv/HELTEC-MeshPocket-RNode.git",
       "branch": "main",
-      "commit": "acee20c6b5c2e1ada8155baf9236aba561884b8b",
-      "for": "the Heltec MeshPocket RNode image (workflows/rnode_boards.py heltec_meshpocket build_dir)"
+      "commit": "2a4fb1f8c54f19d2dc94e15610f471b43f65ee29",
+      "for": "the Heltec MeshPocket RNode image and the Heltec T114 with GPS image, the one a T114 runs as a medic's own radio and position finder (workflows/rnode_boards.py heltec_meshpocket and heltec_t114_gps build_dir)"
     },
     {
       "path": "~/RTNode-2400",
