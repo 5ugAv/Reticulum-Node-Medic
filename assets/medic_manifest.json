@@ -167,10 +167,10 @@
     }
   ],
   "prebuilt": {
-    "rnode_boards": ["heltec_wireless_tracker", "eora_s3", "heltec_meshpocket"],
+    "rnode_boards": ["heltec_wireless_tracker", "eora_s3", "heltec_meshpocket", "heltec_t114_gps"],
     "v4_colour": true,
     "rtnode_proof_env": "heltec_V4_boundary-local",
-    "note": "BUILD flashes the three custom RNode boards from images already built on the medic, and the Heltec V4 colour image too once it exists. The setup builds all four with the code's own recipes (RNodeBoard.compile_command; HeltecV4RGBWorkflow's source patches and compile). The RTNode-2400-NM builds compile at birth; the setup compiles the PlatformIO proof env and the three nRF52 Makefile targets once so the toolchains are proven and cached before a board is on the bench."
+    "note": "BUILD flashes the custom RNode boards from images already built on the medic, and the Heltec V4 colour image too once it exists. The setup builds all four with the code's own recipes (RNodeBoard.compile_command; HeltecV4RGBWorkflow's source patches and compile). The RTNode-2400-NM builds compile at birth; the setup compiles the PlatformIO proof env and the three nRF52 Makefile targets once so the toolchains are proven and cached before a board is on the bench."
   },
   "platformio": {
     "settings": {

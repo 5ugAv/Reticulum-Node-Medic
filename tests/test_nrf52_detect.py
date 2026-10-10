@@ -52,7 +52,7 @@ def test_an_unknown_nrf52_offers_every_nrf52_board_rather_than_none():
     assert r["found"] is True
     assert r["board_key"] is None, "must not guess when the product is unknown"
     assert set(keys) == {"rak4631", "techo", "heltec_t114",
-                         "heltec_meshpocket"}
+                         "heltec_meshpocket", "heltec_t114_gps"}
 
 
 def test_nordics_own_vendor_id_counts_too():
@@ -122,7 +122,8 @@ def test_ht_n5262_narrows_to_the_family_instead_of_every_nrf52_board():
     makes the operator do the disambiguating the tool could have done."""
     r = _detect_family("HT-n5262", "RNode did not respond")
     assert r["board_key"] is None, "must not guess between T114 and MeshPocket"
-    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_meshpocket"}
+    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_t114_gps",
+                                         "heltec_meshpocket"}
 
 
 def test_an_already_flashed_meshpocket_identifies_itself_by_board_byte():
@@ -146,7 +147,8 @@ def test_a_probe_that_names_a_board_outside_the_family_is_ignored():
     this USB string, the honest result is the family question, not that board."""
     r = _detect_family("HT-n5262", "Product : RAK4631 (d2:ce:51)")
     assert r["board_key"] is None
-    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_meshpocket"}
+    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_t114_gps",
+                                         "heltec_meshpocket"}
 
 
 def test_a_probe_that_raises_falls_back_to_asking_the_operator():
@@ -161,7 +163,8 @@ def test_a_probe_that_raises_falls_back_to_asking_the_operator():
                         rnode_fn=boom)
     assert r["found"] is True
     assert r["board_key"] is None
-    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_meshpocket"}
+    assert {b.key for b in r["boards"]} == {"heltec_t114", "heltec_t114_gps",
+                                         "heltec_meshpocket"}
 
 
 def test_a_self_naming_board_is_never_probed():

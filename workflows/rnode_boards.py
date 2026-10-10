@@ -101,6 +101,9 @@ class RNodeBoard:
     notes: str = ""
     # --- arduino-cli (custom) boards only ---
     board_model: int = 0                     # -DBOARD_MODEL byte
+    #: -DBOARD_VARIANT byte, for a tree that builds more than one image for a
+    #: board: RNode community edition's T114 with its GPS module is 0xCB.
+    board_variant: int = 0
     fqbn: str = ""                           # arduino-cli fully-qualified board name
     provision: Dict[str, str] = field(default_factory=dict)
     build_properties: List[str] = field(default_factory=list)
@@ -118,6 +121,12 @@ class RNodeBoard:
     #: and the flasher only ever looked for the Tracker's.
     sketch: str = ""
     dfu_package: str = ""                    # signed .zip for adafruit-nrfutil
+    #: Where the compile writes this board's image, relative to its tree. ""
+    #: means arduino-cli's export folder (build/<fqbn>), which every board of
+    #: one FQBN in one tree SHARES: two images there overwrite each other and
+    #: the wrong board's image gets flashed (the Heltec V4 that booted T-Deck
+    #: firmware). A board sharing its tree and FQBN with another has its own.
+    output_dir: str = ""
 
     @property
     def recovery_instructions(self) -> str:
@@ -167,10 +176,13 @@ class RNodeBoard:
 
     def compile_command(self, firmware_dir: str = DEFAULT_FIRMWARE_DIR) -> str:
         props = list(self.build_properties)
-        props.append(
-            f"compiler.cpp.extra_flags=-DBOARD_MODEL=0x{self.board_model:02X}")
+        flags = f"-DBOARD_MODEL=0x{self.board_model:02X}"
+        if self.board_variant:
+            flags += f" -DBOARD_VARIANT=0x{self.board_variant:02X}"
+        props.append(f"compiler.cpp.extra_flags={flags}")
         prop_args = " ".join(f'--build-property "{p}"' for p in props)
-        return f"arduino-cli compile --fqbn {self.fqbn} -e {prop_args}"
+        out = f"--output-dir {self.output_dir}" if self.output_dir else "-e"
+        return f"arduino-cli compile --fqbn {self.fqbn} {out} {prop_args}"
 
     def upload_command(self, port: str,
                        firmware_dir: str = DEFAULT_FIRMWARE_DIR) -> str:
@@ -396,6 +408,46 @@ _CUSTOM = [
             "board has not been flashed as an RNode yet the tool CANNOT tell "
             "them apart and will ask you which it is. Flashing the wrong one "
             "of the pair boot-loops the board."),
+    ),
+    RNodeBoard(
+        key="heltec_t114_gps",
+        display_name="Heltec T114 with GPS",
+        flash_method="serial_dfu",
+        platform="nRF52",
+        modem="SX1262",
+        bands="863-928 MHz",
+        # RNode community edition's own T114 GPS build (its Makefile's
+        # firmware-heltec_t114_gps): the L76K on RX 37 / TX 39 at 9600, the
+        # pins the RTNode-2400 build proved on 2026-08-27, with every fix sent
+        # inside the radio stream as CMD_GPS frames, which is what
+        # monitor.serial_splitter reads. So a T114 can be a medic's own radio
+        # AND its position finder (keeper, 2026-10-10: "use the T114 instead of
+        # the Heltec wireless tracker").
+        board_model=0x3C,               # BOARD_HELTEC_T114
+        board_variant=0xCB,             # MODEL_CB: T114, 863-928 MHz + GPS
+        fqbn="Heltec_nRF52:Heltec_nRF52:HT-n5262",
+        build_properties=[
+            "build.partitions=no_ota",
+            "upload.maximum_size=2097152",
+        ],
+        # The firmware accepts only the T114's own models (C6/C7) in its
+        # EEPROM; the GPS is compiled in, not provisioned.
+        provision={"product": "c2", "model": "c7", "hwrev": "1"},
+        # Same tree and FQBN as the MeshPocket, so never the shared folder.
+        output_dir="build/heltec_t114_gps",
+        build_dir="~/MeshPocket/RNode_Firmware_CE/build/heltec_t114_gps",
+        dfu_package="RNode_Firmware_CE.ino.zip",
+        bootloader_instructions=(
+            "Nothing to press. The tool puts the T114 into its bootloader "
+            "itself, over USB. If a flash does fail, press RST twice quickly "
+            "and run it again."),
+        recovery_key="T114",
+        notes=(
+            "The Mesh Node T114 with its GPS module fitted. This image reports "
+            "the board's position to the computer it is plugged into, which is "
+            "what lets it be a medic's own radio and position finder. It "
+            "reports the SAME USB identity as the plain T114 and the "
+            "MeshPocket, so the tool will ask which board it is."),
     ),
     RNodeBoard(
         key="eora_s3",

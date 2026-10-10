@@ -84,7 +84,10 @@ def test_every_board_built_here_has_a_build_recipe():
         board = rnode_boards.get_board(b["key"])
         assert b["tree"] in TREES, b
         assert b["command"] == board.compile_command()
-        assert "arduino-cli compile" in b["command"] and " -e " in b["command"]
+        # arduino-cli's export folder, or the board's own when it shares a
+        # tree and FQBN with another (rnode_boards.RNodeBoard.output_dir)
+        assert "arduino-cli compile" in b["command"] and (
+            " -e " in b["command"] or "--output-dir build/" in b["command"])
         for art in b["artefacts"]:
             assert art.startswith(b["tree"] + "/build/"), art
         if board.flash_method == "serial_dfu":

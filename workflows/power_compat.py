@@ -43,6 +43,8 @@ BOARD_POWER: Dict[str, dict] = {
                         "note": "add ~500 mA if a LiPo is attached and charging"},
     "tdeck":           {"peak_ma": 550, "src": "estimate"},
     "heltec_t114":     {"peak_ma": 160, "src": "estimate"},
+    # the same board with its L76K GPS module powered and tracking
+    "heltec_t114_gps": {"peak_ma": 190, "src": "estimate"},
     "xiao_esp32s3":    {"peak_ma": 400, "src": "estimate"},
     # ESP32-S3 + a RAW SX1262 (E22-900MM22S) at 22 dBm, plus a small OLED.
     # No GNSS, no TFT, no PA stage and no battery to charge - so it sits below
@@ -136,6 +138,7 @@ _BOARD_NAMES = {"lora32_v21": "LilyGO LoRa32 v2.1", "lora32_v20": "LilyGO LoRa32
                 "rak4631": "RAK4631", "techo": "LilyGO T-Echo",
                 "tbeam_supreme": "LilyGO T-Beam Supreme", "tdeck": "LilyGO T-Deck",
                 "heltec_t114": "Heltec Mesh Node T114",
+                "heltec_t114_gps": "Heltec T114 with GPS",
                 "xiao_esp32s3": "Seeed XIAO ESP32S3",
                 "heltec_wireless_tracker": "Heltec Wireless Tracker",
                 "eora_s3": "Ebyte EoRa-S3",
@@ -221,6 +224,7 @@ def check(pi_key: str, board_key: str) -> Optional[dict]:
 _BOARD_SHORT = {
     "heltec32_v2": "Heltec V2", "heltec32_v3": "Heltec V3",
     "heltec32_v4": "Heltec V4", "heltec_t114": "Heltec T114",
+    "heltec_t114_gps": "Heltec T114 with GPS",
     "heltec_wireless_tracker": "Heltec Tracker",
     "eora_s3": "EoRa-S3",
     "lora32_v21": "LoRa32 v2.1", "lora32_v20": "LoRa32 v2.0",

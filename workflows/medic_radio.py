@@ -1,4 +1,12 @@
-"""Give a medic its OWN radio and GPS: one Heltec Wireless Tracker.
+"""Give a medic its OWN radio and GPS: one GPS-capable LoRa board.
+
+Any board in OWN_RADIO_BOARDS can be that board (keeper, 2026-10-10: "it would
+be good for a new node medic to have the option to use any GPS capable lora32
+boards as its own ... incase a user has limited access to hardware"). Each one's
+firmware sends its fixes inside the radio stream as CMD_GPS frames, so the
+splitter and everything after it is the same for all of them. The Tracker below
+is the original; a Heltec Mesh Node T114 with its GPS module runs RNode
+community edition's T114 GPS build.
 
 The original medic's radio and GPS are one board, Jonesey: a Heltec Wireless
 Tracker running the medic's RNode fork, which carries LoRa AND streams GPS
@@ -33,6 +41,16 @@ from workflows.build import StepResult
 
 SPLIT_PORT = "/tmp/rnode-jonesey"          # the name the tool and Self Diagnose read
 GPS_STATE = "/dev/shm/nodemedic-gps.json"
+
+#: The boards a medic can take as its own radio AND position finder, each with
+#: the short name its messages use. Every one's firmware sends CMD_GPS frames.
+OWN_RADIO_BOARDS = {
+    "heltec_wireless_tracker": "Tracker",
+    "heltec_t114_gps": "T114",
+}
+#: The same circuit board under another catalogue entry: a T114 that already
+#: runs the official RNode firmware is the board the T114 GPS image is for.
+SAME_HARDWARE = {"heltec_t114_gps": ("heltec_t114",)}
 
 #: The root-owned helper that writes the three radio units (and the hand-over
 #: unit) from FIXED text — assets/scripts/radio_units.py, installed by the
@@ -130,13 +148,25 @@ def lora_up(rnstatus_out: str) -> bool:
 
 
 class MedicRadioSetup:
-    """Flash, wire, start and prove the medic's own Tracker radio + GPS."""
+    """Flash, wire, start and prove the medic's own radio + GPS board."""
 
     def __init__(self, connection, flash_factory: Callable, radio=None,
                  user: Optional[str] = None, home: Optional[str] = None,
-                 sleep: Callable[[float], None] = None):
+                 sleep: Callable[[float], None] = None,
+                 board_key: str = "heltec_wireless_tracker"):
         self.connection = connection
         self.flash_factory = flash_factory
+        if board_key not in OWN_RADIO_BOARDS:
+            raise ValueError(f"{board_key} cannot be a medic's own radio")
+        self.board_key = board_key
+        self.short = OWN_RADIO_BOARDS[board_key]
+        try:
+            from workflows.rnode_boards import get_board
+            self.full = get_board(board_key).display_name
+        except Exception:                                      # noqa: BLE001
+            self.full = self.short
+        #: what the detector may call the plugged-in board for this to go ahead
+        self._accepts = {board_key, *SAME_HARDWARE.get(board_key, ())}
         self.user = user or os.environ.get("USER") or "pi"
         self.home = home or os.path.expanduser("~")
         if radio is None:
@@ -178,15 +208,15 @@ class MedicRadioSetup:
         if own:
             self.by_id = own
             return StepResult("flash_radio", True,
-                              "The Heltec Wireless Tracker is already this medic's radio.",
+                              f"The {self.full} is already this medic's radio.",
                               skipped=True)
         other = self._looks_like_another_board()
         if other:
             return StepResult("flash_radio", False,
                               f"The board plugged in looks like a {other}, not a "
-                              "Heltec Wireless Tracker. Node Medic will not write "
-                              "the Tracker's radio software onto it. Unplug it, plug "
-                              "in the Heltec Wireless Tracker, then press Try again.")
+                              f"{self.full}. Node Medic will not write "
+                              f"the {self.short}'s radio software onto it. Unplug it, plug "
+                              f"in the {self.full}, then press Try again.")
         wf = self.flash_factory()
         if getattr(wf, "is_blocked", False):
             return StepResult("flash_radio", False, getattr(wf, "message",
@@ -203,7 +233,7 @@ class MedicRadioSetup:
             return StepResult("flash_radio", False, bad.message)
         self._flashed = wf
         return StepResult("flash_radio", True,
-                          "The Tracker now carries this medic's radio software.")
+                          f"The {self.short} now carries this medic's radio software.")
 
     def _find_by_id(self) -> StepResult:
         """The splitter must own the board by its permanent by-id name: the
@@ -220,7 +250,7 @@ class MedicRadioSetup:
             self.sleep(1)
         from workflows.own_supply import with_supply_note
         return StepResult("find_its_port", False, with_supply_note(
-                          "The Heltec Wireless Tracker did not come back after "
+                          f"The {self.full} did not come back after "
                           "flashing. Unplug it, plug it back in, and press Try again.",
                           self.connection.run))
 
@@ -308,7 +338,7 @@ class MedicRadioSetup:
         serial = by_id_to_serial(self.by_id)
         if not serial:
             return StepResult("lock_off", False,
-                              "Could not read the Tracker's serial number to "
+                              f"Could not read the {self.short}'s serial number to "
                               "record it as this medic's radio. Press Try again.")
         h = self.home
         code, out, _e = self.connection.run(f"cat {h}/.reticulum-node-medic/onboard.json")
@@ -320,9 +350,9 @@ class MedicRadioSetup:
         ok = self._write(f"{h}/.reticulum-node-medic/onboard.json",
                          json.dumps(roster, indent=2) + "\n", root=False)
         return StepResult("lock_off", ok,
-                          "The Tracker is now this medic's own radio: Node Medic "
+                          f"The {self.short} is now this medic's own radio: Node Medic "
                           "will never flash it again." if ok else
-                          "Could not record the Tracker as this medic's radio. "
+                          f"Could not record the {self.short} as this medic's radio. "
                           "Press Try again.")
 
     def _unlock(self) -> None:
@@ -339,16 +369,18 @@ class MedicRadioSetup:
                         json.dumps(roster, indent=2) + "\n", root=False)
 
     def _looks_like_another_board(self) -> str:
-        """The display name of a board the detector is SURE is not a Tracker,
-        else "" (unknown is allowed: the keeper checks the label). Any ESP32-S3
-        with native USB enumerates like a Tracker; a V4 or XIAO would have been
-        written the Tracker's image on say-so (adversarial review, 2026-10-06)."""
+        """The display name of a board the detector is SURE is not the chosen
+        one, else "" (unknown is allowed: the keeper checks the label). Any
+        ESP32-S3 with native USB enumerates like a Tracker; a V4 or XIAO would
+        have been written the Tracker's image on say-so (adversarial review,
+        2026-10-06). A T114 already running the official RNode firmware is the
+        T114 GPS image's own board, so it passes (SAME_HARDWARE)."""
         try:
             from ui.board_detect import detect_board
             from workflows.rnode_boards import available_boards, get_board
             res = detect_board(available_boards()) or {}
             key = res.get("board_key") or ""
-            if res.get("found") and key and key != "heltec_wireless_tracker":
+            if res.get("found") and key and key not in self._accepts:
                 b = get_board(key)
                 return getattr(b, "display_name", key) if b else key
         except Exception:                                      # noqa: BLE001
@@ -397,7 +429,7 @@ class MedicRadioSetup:
                        f"systemctl start {KIOSK_UNIT}'")
                 code, out, err = self.connection.run(self._priv(cmd), timeout=30)
             if code == 0:
-                mark_check_pending(self.connection)
+                mark_check_pending(self.connection, self.board_key)
                 return StepResult("hand_over", True,
                                   "The screen goes dark for about half a minute "
                                   "while Node Medic restarts with its new radio. "
@@ -437,8 +469,23 @@ KIOSK_UNIT = "reticulum-node-medic.service"
 CHECK_PENDING = "~/.config/nodemedic/radio_check_pending"
 
 
-def mark_check_pending(connection) -> None:
-    connection.run(f"mkdir -p ~/.config/nodemedic && touch {CHECK_PENDING}")
+def mark_check_pending(connection, board_key: str = "heltec_wireless_tracker") -> None:
+    """Leave the check for the restarted app, naming the board it should find
+    (the check runs in a new process that never saw the set-up)."""
+    import shlex
+    connection.run(f"mkdir -p ~/.config/nodemedic && printf '%s\\n' "
+                   f"{shlex.quote(board_key)} > {CHECK_PENDING}")
+
+
+def pending_board() -> str:
+    """The board the pending check is for: the key the set-up wrote, or the
+    Tracker when the marker is empty (one left by an older set-up)."""
+    try:
+        with open(os.path.expanduser(CHECK_PENDING)) as fh:
+            key = fh.read().strip()
+    except OSError:
+        key = ""
+    return key if key in OWN_RADIO_BOARDS else "heltec_wireless_tracker"
 
 
 def check_pending() -> bool:
@@ -485,9 +532,17 @@ class MedicRadioCheck:
     """After the hand-over restart: is the LoRa radio up, is GPS reporting?"""
 
     def __init__(self, connection, home: Optional[str] = None,
-                 sleep: Callable[[float], None] = None):
+                 sleep: Callable[[float], None] = None,
+                 board_key: Optional[str] = None):
         import time
         self.connection = connection
+        key = board_key if board_key in OWN_RADIO_BOARDS else pending_board()
+        self.short = OWN_RADIO_BOARDS[key]
+        try:
+            from workflows.rnode_boards import get_board
+            self.full = get_board(key).display_name
+        except Exception:                                      # noqa: BLE001
+            self.full = self.short
         self.home = home or os.path.expanduser("~")
         self.sleep = sleep or time.sleep
         self.results: List[StepResult] = []
@@ -533,7 +588,7 @@ class MedicRadioCheck:
         from workflows.own_supply import with_supply_note
         return StepResult("hear_radio", False, with_supply_note(
                           "The radio services are running but the radio has not "
-                          "answered yet. Check the Tracker is still plugged in, "
+                          f"answered yet. Check the {self.short} is still plugged in, "
                           "then press Try again.", self.connection.run))
 
     def _hear_gps(self) -> StepResult:
@@ -553,5 +608,5 @@ class MedicRadioCheck:
             self.sleep(3)
         return StepResult("hear_gps", False,
                           "The radio is on, but no position reports have arrived "
-                          "yet. Check the board really is a Heltec Wireless "
-                          "Tracker, then press Try again.")
+                          f"yet. Check the board really is a {self.full}, "
+                          "then press Try again.")

@@ -484,7 +484,7 @@ def _medic_owns_radio() -> bool:
         return False
 
 
-def _default_setup_factory():
+def _default_setup_factory(board_key: str = "heltec_wireless_tracker"):
     """The medic's OWN radio and GPS, on one Heltec Wireless Tracker — the same
     firmware and wiring as the original medic's Jonesey (workflows.medic_radio).
     The old GPS-only sketch left a clone with no LoRa radio at all."""
@@ -493,9 +493,9 @@ def _default_setup_factory():
     from workflows.rnode_boards import get_board
     from ui.hw_factories import make_rnode_flash, local_board_ports
     conn = LocalConnection()
-    board = get_board("heltec_wireless_tracker")
+    board = get_board(board_key)
 
     def flash():
         return make_rnode_flash(board, lambda _b: None, connection=conn,
                                 ports_fn=local_board_ports)
-    return MedicRadioSetup(conn, flash)
+    return MedicRadioSetup(conn, flash, board_key=board_key)

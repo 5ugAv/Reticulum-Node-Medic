@@ -297,6 +297,7 @@ _USB_KIND = {
     "tbeam": "bridge", "heltec32_v2": "bridge",
     # nRF52 -> always native
     "rak4631": "native", "techo": "native", "heltec_t114": "native",
+    "heltec_t114_gps": "native",
     # ESP32-S3, per-board
     "heltec32_v3": "bridge",
     "heltec32_v4": "native",
@@ -421,7 +422,7 @@ _NRF52_FAMILY_KEYS = (
     # per-unit serial differs, and that says WHICH board, never WHAT board.
     # Only the two we stock are listed; flashing either image onto the other
     # boot-loops the board, which is why this asks rather than assumes.
-    ("ht-n5262", ("heltec_t114", "heltec_meshpocket")),
+    ("ht-n5262", ("heltec_t114", "heltec_t114_gps", "heltec_meshpocket")),
 )
 
 #: RNode board byte -> our board key. An already-flashed RNode reports this in

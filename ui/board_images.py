@@ -69,6 +69,8 @@ BOARDS: Dict[str, dict] = {
     "tbeam_supreme": _b("tbeam_supreme", "LilyGO T-Beam Supreme"),
     "tdeck": _b("tdeck", "LilyGO T-Deck"),
     "heltec_t114": _b("heltec_t114", "Heltec Mesh Node T114"),
+    # the same circuit board, so the same picture
+    "heltec_t114_gps": _b("heltec_t114", "Heltec T114 with GPS"),
     "xiao_esp32s3": _b("xiao_esp32s3", "Seeed XIAO ESP32S3 (Wio-SX1262)",
                        has_screen=False),
     "heltec_wireless_tracker": _b("heltec_wireless_tracker",

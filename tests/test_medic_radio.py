@@ -65,11 +65,12 @@ def test_the_setup_installs_then_hands_over_to_a_restart(tmp_path, monkeypatch):
     # the hand-over stops the app, starts rnsd, starts the app — from its own unit
     hand = [x for x in seen if "systemd-run" in x][0]
     assert hand.index("systemctl stop") < hand.index("restart rnsd") < hand.index("systemctl start")
-    assert f"touch {tmp_path / 'pending'}" in joined     # the check runs after the restart
+    # the check runs after the restart, told which board to find
+    assert f"heltec_wireless_tracker > {tmp_path / 'pending'}" in joined
     # the lock-off comes AFTER the services are written and enabled, and the
     # pending mark only after the restart was queued (adversarial review)
     assert joined.rindex("onboard.json") > joined.index("systemctl enable")
-    assert joined.index("touch ") > joined.index("systemd-run")
+    assert joined.index(str(tmp_path / "pending")) > joined.index("systemd-run")
     assert "--collect --unit=nm-radio-handover-" in hand
 
 
@@ -126,7 +127,8 @@ def test_the_tracker_screen_runs_this_not_the_gps_only_sketch():
     src = open("ui/screens/firstborn_screen.py", encoding="utf-8").read()
     body = src[src.index("def _default_setup_factory"):]
     assert "MedicRadioSetup" in body and "GpsTrackerSetup" not in body
-    assert 'get_board("heltec_wireless_tracker")' in body
+    assert 'board_key: str = "heltec_wireless_tracker"' in body   # the default
+    assert "get_board(board_key)" in body and "board_key=board_key" in body
 
 
 def test_writing_a_file_works_with_the_real_local_copy(tmp_path, monkeypatch):
@@ -306,7 +308,7 @@ def test_with_the_helper_every_privileged_step_is_an_exact_command(tmp_path, mon
     assert "/etc/systemd/system" not in joined          # the helper writes the units
     assert "sh -c" not in joined and "systemd-run" not in joined
     # still: the pending mark only once the restart is queued
-    assert joined.index("touch ") > joined.index(mr.HANDOVER_UNIT)
+    assert joined.index(str(mr.CHECK_PENDING)) > joined.index(mr.HANDOVER_UNIT)
     # and the lock-off after the services are enabled
     assert joined.rindex("onboard.json") > joined.index("systemctl enable")
 
@@ -405,3 +407,81 @@ def test_the_helper_takes_its_user_from_sudo_only(monkeypatch):
     monkeypatch.delenv("SUDO_USER", raising=False)
     with pytest.raises(SystemExit):
         h.calling_user()
+
+
+# ---- any GPS-capable board as the medic's own radio (keeper, 2026-10-10) ----
+
+def test_every_own_radio_board_is_in_the_catalogue():
+    from workflows.rnode_boards import get_board
+    for key in mr.OWN_RADIO_BOARDS:
+        assert get_board(key) is not None, key
+
+
+def test_a_board_that_cannot_report_its_position_is_not_offered():
+    import pytest
+    with pytest.raises(ValueError):
+        mr.MedicRadioSetup(_conn(), lambda: _Flash(), radio=RADIO, user="pi",
+                           home="/home/pi", board_key="heltec_v4")
+
+
+def _detects(monkeypatch, key):
+    import ui.board_detect as bd
+    monkeypatch.setattr(bd, "detect_board", lambda boards, *a, **k: {
+        "found": True, "board_key": key})
+
+
+def test_a_t114_on_the_official_firmware_is_the_t114_gps_images_own_board(monkeypatch):
+    s = mr.MedicRadioSetup(_conn(), lambda: _Flash(), radio=RADIO, user="pi",
+                           home="/home/pi", sleep=lambda s: None,
+                           board_key="heltec_t114_gps")
+    for key in ("heltec_t114", "heltec_t114_gps"):
+        _detects(monkeypatch, key)
+        assert s._looks_like_another_board() == ""
+    _detects(monkeypatch, "heltec_wireless_tracker")
+    assert s._looks_like_another_board() == "Heltec Wireless Tracker"
+
+
+def test_a_t114_set_up_names_the_t114_and_never_the_tracker():
+    s = mr.MedicRadioSetup(_conn(), lambda: _Flash(), radio=RADIO, user="pi",
+                           home="/home/pi", sleep=lambda s: None,
+                           board_key="heltec_t114_gps")
+    s._looks_like_another_board = lambda: "Heltec V4"
+    res = s.run_all()
+    assert "not a Heltec T114 with GPS" in res[0].message
+    assert "Tracker" not in res[0].message
+
+
+def test_the_check_after_the_restart_names_the_board_the_set_up_wrote(tmp_path, monkeypatch):
+    monkeypatch.setattr(mr, "CHECK_PENDING", str(tmp_path / "pending"))
+    (tmp_path / "pending").write_text("heltec_t114_gps\n")
+    chk = mr.MedicRadioCheck(_conn(), home="/home/pi", sleep=lambda s: None)
+    assert chk.full == "Heltec T114 with GPS"
+    (tmp_path / "pending").write_text("")                 # an older set-up's marker
+    assert mr.MedicRadioCheck(_conn(), home="/home/pi").short == "Tracker"
+
+
+def test_the_set_up_leaves_the_board_for_the_check():
+    c = EmulatedConnection(default_code=0, default_stdout="")
+    mr.mark_check_pending(c, "heltec_t114_gps")
+    assert any("heltec_t114_gps" in cmd and mr.CHECK_PENDING in cmd for cmd in c.history)
+
+
+def test_the_t114_gps_image_is_built_with_its_variant_into_its_own_folder():
+    from workflows.rnode_boards import get_board
+    t = get_board("heltec_t114_gps").compile_command()
+    assert "-DBOARD_MODEL=0x3C -DBOARD_VARIANT=0xCB" in t
+    assert "--output-dir build/heltec_t114_gps" in t and " -e " not in t
+    m = get_board("heltec_meshpocket").compile_command()   # unchanged
+    assert " -e " in m and "BOARD_VARIANT" not in m and "--output-dir" not in m
+
+
+def test_no_two_boards_share_an_image_folder():
+    """Two images in one folder overwrite each other and the wrong board's
+    image gets flashed (the Heltec V4 that booted T-Deck firmware)."""
+    from workflows.rnode_boards import available_boards
+    seen = {}
+    for b in available_boards():
+        d = getattr(b, "build_dir", "")
+        if d:
+            assert d not in seen, f"{b.key} and {seen[d]} share {d}"
+            seen[d] = b.key

@@ -247,7 +247,8 @@ def test_custom_boards_is_everything_we_build_here_not_just_arduino_cli():
     the next flash method cannot vanish the same way."""
     customs = custom_boards()
     assert {b.key for b in customs} == {"heltec_wireless_tracker",
-                                        "heltec_meshpocket", "eora_s3"}
+                                        "heltec_meshpocket", "eora_s3",
+                                        "heltec_t114_gps"}
     assert all(b.flash_method != "autoinstall" for b in customs)
     assert {b.flash_method for b in customs} == {"arduino_cli", "serial_dfu"}
 

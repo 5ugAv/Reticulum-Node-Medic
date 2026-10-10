@@ -70,6 +70,7 @@ _BY_KEY = {
     "rak4631": "RAK4631",
     "techo": "T-Echo",
     "heltec_t114": "T114",
+    "heltec_t114_gps": "T114",
     "heltec32_v4": "Heltec V4",
     "heltec32_v3": "Heltec V3",
     "heltec32_v2": "Heltec V2",

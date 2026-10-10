@@ -1574,7 +1574,7 @@ SETUP_STEPS: List[SetupStep] = [
               "1's versions", _check_libraries, _act_libraries, internet=True, needs_mb=200),
     SetupStep("fetch_firmware_trees", "Fetch the firmware sources at their pinned commits",
               _check_trees, _act_trees, internet=True, needs_mb=400),
-    SetupStep("build_custom_boards", "Build the Tracker, EoRa-S3 and MeshPocket radio images",
+    SetupStep("build_custom_boards", "Build the Tracker, EoRa-S3, MeshPocket and T114 GPS radio images",
               _check_custom_boards, _act_custom_boards, needs_mb=300),
     SetupStep("build_v4_colour_image", "Build the Heltec V4 colour image",
               _check_v4, _act_v4, needs_mb=200),
