@@ -32,9 +32,9 @@ from ui import theme
 from ui.text_fit import grow_to_text
 from ui.i18n import tr  # i18n: wrapped — firstborn ceremony buttons/plate/progress
 
-#: The board the firstborn always is — show it, don't just name it
+#: The board the page is about is the keeper's choice (any board in
+#: workflows.medic_radio.OWN_RADIO_BOARDS); show it, don't just name it
 #: ([[show-dont-tell-ux]]).
-_TRACKER_BOARD = "heltec_wireless_tracker"
 
 
 def _label(text, color="text_secondary", bold=False, size="15sp"):
@@ -45,12 +45,12 @@ def _label(text, color="text_secondary", bold=False, size="15sp"):
     return lbl
 
 
-def _tracker_image(height=140):
-    """The Heltec Tracker's picture, or None if the asset is missing (best-effort
-    — a missing image must never break the ceremony)."""
+def _board_image(board_key, height=140):
+    """The board's picture, or None if the asset is missing (best-effort —
+    a missing image must never break the ceremony)."""
     try:
         from ui.board_images import image_for
-        path = image_for(_TRACKER_BOARD)
+        path = image_for(board_key)
         if not path or not os.path.exists(path):
             return None
         return UIImage(source=path, size_hint_y=None, height=dp(height),
@@ -107,6 +107,11 @@ class FirstbornScreen(BoxLayout):
         self._gps_live = False
         self._poll = None
         self._last_stage = None
+        #: which board this medic takes as its own radio: the keeper's tap on
+        #: a picture wins; until then the plugged-in board's USB identity
+        #: suggests one, and the Tracker is assumed.
+        self._board_key = ff.DEFAULT_BOARD
+        self._board_chosen = False
 
     # -- lifecycle -----------------------------------------------------------
     def begin_screen(self):
@@ -149,8 +154,8 @@ class FirstbornScreen(BoxLayout):
         review, 2026-10-06)."""
         if self._running:
             from ui.confirm import confirm_leave
-            confirm_leave(tr("Not yet"), tr("The Heltec Wireless Tracker is being "
-                                            "set up. Wait for it to finish."))
+            confirm_leave(tr("Not yet"), tr("The {board} is being set up. Wait for "
+                                            "it to finish.").format(board=self._board_name()))
             return True
         return False
 
@@ -173,20 +178,75 @@ class FirstbornScreen(BoxLayout):
         self._render()
 
     # -- view ----------------------------------------------------------------
+    def _board_name(self) -> str:
+        return ff.board_name(self._board_key)
+
+    def _choose(self, key):
+        """The keeper tapped a board's picture: that is the board."""
+        self._board_key = key
+        self._board_chosen = True
+        self._render(force=True)
+
+    def _suggest_board(self, ports):
+        """Until the keeper taps a picture, the one plugged-in board's USB
+        identity (no port is opened) says which board this probably is."""
+        if self._board_chosen or self._running or len(ports) != 1:
+            return
+        try:
+            from ui.board_detect import port_usb_product, port_usb_vendor
+            guess = ff.board_from_usb(port_usb_vendor(ports[0]),
+                                      port_usb_product(ports[0]))
+        except Exception:              # noqa: BLE001
+            guess = None
+        if guess and guess != self._board_key:
+            self._board_key = guess
+            self._last_stage = None    # the words change with the board
+
     def _view(self) -> ff.FirstbornView:
         try:
-            candidates = len(list(self._ports_fn()))
+            ports = list(self._ports_fn())
         except Exception:              # noqa: BLE001
-            candidates = 0
+            ports = []
+        self._suggest_board(ports)
         return ff.decide(gps_live=self._gps_live,
-                         tracker_candidates=candidates,
+                         tracker_candidates=len(ports),
                          running=self._running,
                          result=self._result,
                          failure=self._failure,
                          checking=getattr(self, "_check_only", False),
                          owns_radio=_medic_owns_radio(),
                          after_check=getattr(self, "_check_only", False),
-                         no_image=_tracker_image_missing())
+                         no_image=_image_missing(self._board_key),
+                         board_name=self._board_name())
+
+    def _picker(self):
+        """One picture-button per board the medic can take as its own radio,
+        the chosen one lit. A picture, not a list of names (show-don't-tell)."""
+        choices = ff.board_choices()
+        row = BoxLayout(orientation="horizontal", size_hint_y=None,
+                        height=dp(132), spacing=dp(10))
+        for key, name in choices:
+            chosen = key == self._board_key
+            btn = Button(text="", size_hint_x=1, background_normal="",
+                         background_color=theme.hex_to_rgba(
+                             theme.COLORS["green" if chosen else "surface"]))
+            inner = BoxLayout(orientation="vertical", padding=[dp(4), dp(4)],
+                              spacing=dp(2))
+            img = _board_image(key, 96)
+            if img is not None:
+                inner.add_widget(img)
+            inner.add_widget(Label(
+                text=name, bold=chosen, font_size=theme.font_sp("13sp"),
+                size_hint_y=None, height=dp(24), halign="center",
+                color=theme.hex_to_rgba(theme.COLORS[
+                    "background" if chosen else "text_secondary"])))
+            inner.size = btn.size
+            btn.bind(size=lambda _b, v, i=inner: setattr(i, "size", v),
+                     pos=lambda _b, v, i=inner: setattr(i, "pos", v))
+            btn.add_widget(inner)
+            btn.bind(on_release=lambda *_a, k=key: self._choose(k))
+            row.add_widget(btn)
+        return row
 
     def _render(self, force=False):
         view = self._view()
@@ -206,8 +266,10 @@ class FirstbornScreen(BoxLayout):
 
         # Show the board on the stages that ask the keeper to handle it, and in
         # the celebration — a picture, not just the name.
-        if view.stage in (ff.NEED_TRACKER, ff.READY, ff.DONE):
-            img = _tracker_image(150 if view.stage == ff.DONE else 130)
+        if view.stage in (ff.NEED_TRACKER, ff.READY) and len(ff.board_choices()) > 1:
+            self.add_widget(self._picker())
+        elif view.stage in (ff.NEED_TRACKER, ff.READY, ff.DONE):
+            img = _board_image(self._board_key, 150 if view.stage == ff.DONE else 130)
             if img is not None:
                 self.add_widget(img)
 
@@ -296,7 +358,8 @@ class FirstbornScreen(BoxLayout):
         if view.can_begin:
             begin = Button(
                 text=(tr("Try again  →") if view.stage == ff.FAILED
-                      else tr("Begin — set up the Heltec Wireless Tracker  →")),
+                      else tr("Begin — set up the {board}  →").format(
+                          board=self._board_name())),
                 size_hint_y=None, height=dp(58), font_size=theme.font_sp("18sp"),
                 background_normal="",
                 background_color=theme.hex_to_rgba(theme.COLORS["green"]),
@@ -354,7 +417,8 @@ class FirstbornScreen(BoxLayout):
         try:
             from kivy.app import App
             App.get_running_app().begin_activity(
-                tr("Setting up the radio — keep the Tracker plugged in"))
+                tr("Setting up the radio — keep the {board} plugged in").format(
+                    board=self._board_name()))
         except Exception:                                  # noqa: BLE001
             pass
         self._render(force=True)
@@ -372,18 +436,27 @@ class FirstbornScreen(BoxLayout):
                 from workflows.medic_radio import MedicRadioCheck
                 workflow = MedicRadioCheck(LocalConnection())
             else:
-                workflow = self._setup_factory()
+                workflow = self._make_setup()
             # GpsTrackerSetup.run_all returns the LIST of StepResults (it stops
             # at the first failure). Success = a non-empty run whose every step
             # passed — a non-empty list is NOT itself a win.
             results = workflow.run_all(on_progress=on_progress) or []
             ok = ff.succeeded(results)
             if not ok:
-                failure = ff.first_failure(results)
+                failure = ff.first_failure(results, board_name=self._board_name())
         except Exception as exc:       # noqa: BLE001
             ok = False
-            failure = tr("Setting up the Heltec Wireless Tracker hit a snag: {err}").format(err=exc)
+            failure = tr("Setting up the {board} hit a snag: {err}").format(
+                board=self._board_name(), err=exc)
         Clock.schedule_once(lambda dt: self._finish(ok, failure), 0)
+
+    def _make_setup(self):
+        """The set-up for the chosen board. An injected factory (tests, the
+        app) may take the board key or nothing."""
+        try:
+            return self._setup_factory(self._board_key)
+        except TypeError:
+            return self._setup_factory()
 
     def _show_progress(self, msg):
         self._progress = msg
@@ -454,24 +527,26 @@ def _medic_has_gps() -> bool:
         return False
 
 
-def _tracker_image_missing() -> bool:
-    """True when this medic has no Tracker radio-software image to write
-    (a clone from a GitHub-built parent). Checked once; it cannot change
-    while the page is open."""
-    global _IMG_MISSING
-    if _IMG_MISSING is None:
+def _image_missing(board_key: str) -> bool:
+    """True when this medic has no radio-software image to write onto that
+    board (a clone whose parent never carried the tree). Checked once per
+    board, so the 1.5 s plug poll never walks the disk."""
+    if board_key not in _IMG_MISSING:
         try:
-            import os
             from workflows.rnode_boards import get_board
             from workflows.rnode_flash import fork_image_for
-            _IMG_MISSING = not os.path.isfile(os.path.expanduser(
-                fork_image_for(get_board("heltec_wireless_tracker"), "bin")))
-        except Exception:                  # noqa: BLE001
-            _IMG_MISSING = False
-    return _IMG_MISSING
+            b = get_board(board_key)
+            if b.flash_method == "serial_dfu":
+                path = f"{b.build_dir}/{b.dfu_package}"
+            else:
+                path = fork_image_for(b, "bin")
+            _IMG_MISSING[board_key] = not os.path.isfile(os.path.expanduser(path))
+        except Exception:              # noqa: BLE001
+            _IMG_MISSING[board_key] = False
+    return _IMG_MISSING[board_key]
 
 
-_IMG_MISSING = None
+_IMG_MISSING = {}
 
 
 def _medic_owns_radio() -> bool:

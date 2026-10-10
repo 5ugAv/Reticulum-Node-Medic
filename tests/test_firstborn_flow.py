@@ -93,3 +93,40 @@ def test_first_failure_names_the_failed_step():
 
 def test_first_failure_default_when_all_passed():
     assert "didn't finish" in ff.first_failure([_R(True)])
+
+
+# ---- which board: any GPS-capable board (keeper, 2026-10-10) ---------------
+
+def test_the_page_offers_every_own_radio_board_tracker_first():
+    choices = ff.board_choices()
+    assert choices[0][0] == "heltec_wireless_tracker" == ff.DEFAULT_BOARD
+    assert ("heltec_t114_gps", "Heltec T114 with GPS") in choices
+    from workflows.medic_radio import OWN_RADIO_BOARDS
+    assert [k for k, _ in choices] == list(OWN_RADIO_BOARDS)
+
+
+def test_the_plug_suggests_the_board_without_opening_a_port():
+    assert ff.board_from_usb("Heltec", "HT-n5262") == "heltec_t114_gps"
+    assert ff.board_from_usb("Adafruit", "T114 RTNode-2400") == "heltec_t114_gps"
+    assert ff.board_from_usb("Espressif", "USB JTAG/serial debug unit") == "heltec_wireless_tracker"
+    assert ff.board_from_usb("", "Some Unlabelled Widget") is None
+
+
+def test_every_sentence_names_the_chosen_board_and_never_the_tracker():
+    t114 = "Heltec T114 with GPS"
+    seen = []
+    for kw in (dict(gps_live=False, tracker_candidates=0),
+               dict(gps_live=False, tracker_candidates=1),
+               dict(gps_live=False, tracker_candidates=2),
+               dict(gps_live=False, tracker_candidates=1, running=True),
+               dict(gps_live=False, tracker_candidates=1, running=True, checking=True),
+               dict(gps_live=False, tracker_candidates=1, result=True),
+               dict(gps_live=False, tracker_candidates=1, result=False),
+               dict(gps_live=False, tracker_candidates=1, no_image=True)):
+        v = ff.decide(board_name=t114, **kw)
+        seen.append(v.stage)
+        assert "Tracker" not in v.title + v.body, (v.stage, v.title, v.body)
+    assert set(seen) == {ff.NEED_TRACKER, ff.READY, ff.BIRTHING, ff.DONE, ff.FAILED}
+    assert ff.first_failure([], board_name=t114) == "The Heltec T114 with GPS didn't finish coming up."
+    # the Tracker stays the default wording
+    assert "Heltec Wireless Tracker" in ff.decide(False, 1).title

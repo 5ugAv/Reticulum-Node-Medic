@@ -41,7 +41,7 @@ def test_app_registers_the_firstborn_screen_dormant():
 def test_screen_shows_the_tracker_board_image_not_just_the_name():
     # show-don't-tell: the physical-action stages carry the board picture
     assert "heltec_wireless_tracker" in SRC
-    assert "_tracker_image" in SRC
+    assert "_board_image" in SRC          # a picture of the chosen board
 
 
 def test_celebration_has_a_nameplate_and_honest_proof():
@@ -101,3 +101,14 @@ def test_after_the_set_up_the_walkthrough_carries_on_where_it_was():
     FB = pathlib.Path("ui/screens/firstborn_screen.py").read_text()
     assert "self._begin(check_only=True)" in FB
     assert "check_only = check_only or _mr.check_pending()" in FB   # Try again = re-check
+
+
+def test_the_page_lets_the_keeper_pick_the_board_by_picture():
+    """Keeper, 2026-10-10: at the own-radio page, an option to select the
+    Heltec Wireless Tracker or the T114 (or whatever is offered)."""
+    assert "ff.board_choices()" in SRC and "def _picker" in SRC
+    assert "_board_image(key" in SRC                      # a picture per board
+    assert "self._setup_factory(self._board_key)" in SRC  # the chosen board is set up
+    assert "board_name=self._board_name()" in SRC         # and named on the page
+    assert "ff.board_from_usb(" in SRC                    # the plug suggests one
+    assert "_TRACKER_BOARD" not in SRC
