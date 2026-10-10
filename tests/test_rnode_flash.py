@@ -360,3 +360,114 @@ def test_verify_reports_a_true_hash_mismatch_without_lying():
     assert res.success                       # still a valid RNode
     assert "WARNING" in res.message and "disagree" in res.message
     assert not any("--firmware-hash" in c for c in conn.history)
+
+
+# ---- verify waits for a board rebooting after its last write (T114, 2026-10-10)
+
+def _sequenced_info_conn(answers):
+    """A flash connection whose --info answers change call by call."""
+    conn = flash_conn()
+    seq = list(answers)
+
+    class _Conn(type(conn)):
+        pass
+    real = conn.run
+
+    def run(cmd, *a, **k):
+        if "--info" in cmd and seq:
+            return (0, seq.pop(0), "")
+        return real(cmd, *a, **k)
+    conn.run = run
+    return conn
+
+
+def test_verify_waits_for_a_board_that_is_rebooting_after_its_last_write():
+    """set_params' reset re-enumerated the T114 at the second verify asked,
+    and the firmware reset once more 23 s later: a healthy, signed board was
+    called invalid. Verify asks again while the board is not back yet."""
+    naps = []
+    conn = _sequenced_info_conn([
+        "Serial port opened, but RNode did not respond",
+        "Serial port opened, but RNode did not respond",
+        "Device signature   : Validated\nFirmware version   : 1.75"])
+    wf = RNodeFlashWorkflow(conn, V4, port="/dev/ttyACM0", sleep=naps.append)
+    results = wf.run_all()
+    assert results[-1].name == "verify" and results[-1].success is True
+    assert naps == [6, 6]
+
+
+def test_verify_still_fails_at_once_for_a_board_that_answers_wrongly():
+    naps = []
+    conn = flash_conn(provisioned=False)
+    wf = RNodeFlashWorkflow(conn, V4, port="/dev/ttyACM0", sleep=naps.append)
+    results = wf.run_all()
+    assert results[-1].name == "verify" and results[-1].success is False
+    assert naps == []
+
+
+def test_verify_gives_up_after_about_fifty_seconds():
+    naps = []
+    conn = _sequenced_info_conn(["Could not open serial port"] * 20)
+    wf = RNodeFlashWorkflow(conn, V4, port="/dev/ttyACM0", sleep=naps.append)
+    results = wf.run_all()
+    assert results[-1].success is False and len(naps) == 7
+
+
+# ---- nRF52: every EEPROM write is followed by a reset (T114, 2026-10-10) -----
+
+class _MovingBoard:
+    """A serial-DFU board whose tty MOVES after each EEPROM write, the way the
+    T114 did on 2026-10-10: ttyACM0 for the bootloader and the first app boot,
+    ttyACM1 after the --eeprom-wipe reset. The firmware answers the KISS probe
+    only on its CURRENT tty, and the lingering old tty answers nothing."""
+    NAME = "usb-Heltec_HT-n5262_E5A1B2C3D4F60718-if00"
+
+    def __init__(self):
+        self.tty = "/dev/ttyACM0"
+        self.history = []
+        self.hash = "ab" * 32
+
+    def run(self, cmd, timeout=30):
+        self.history.append(cmd)
+        if "readlink -f" in cmd and "basename" in cmd:            # usb_id_for_port
+            return (0, self.NAME if self.tty in cmd else "", "")
+        if "/dev/serial/by-id/*" in cmd:                           # find_port_by_usb_serial
+            return (0, f"/dev/serial/by-id/{self.NAME} {self.tty}\n", "")
+        if cmd.startswith("ls /dev/ttyACM"):
+            return (0, self.tty + "\n", "")
+        if "adafruit-nrfutil dfu serial" in cmd:
+            return (0, "Device programmed.", "")
+        if "kiss_detect.py" in cmd:
+            return (0 if self.tty in cmd else 1, "", "")
+        if "--eeprom-wipe" in cmd:
+            self.tty = "/dev/ttyACM1"                              # the reset moves it
+            return (0, "EEPROM wiped", "")
+        if cmd.endswith("-L") or " -L " in cmd:
+            return (0, f"The actual firmware hash is:\n{self.hash}", "") if self.tty in cmd else (1, "", "Could not open")
+        if "--info" in cmd:
+            return (0, "Device signature   : Validated\nFirmware version   : 1.75", "") if self.tty in cmd else (1, "", "Could not open")
+        if "test -e" in cmd:
+            return (0 if self.tty in cmd else 1, "", "")
+        return (0, "ok", "")
+
+    def push_file(self, *a, **k):
+        return True
+
+
+def test_a_serial_dfu_board_is_provisioned_on_the_port_it_holds_after_each_reset():
+    from workflows.rnode_boards import get_board
+    board = get_board("heltec_meshpocket")
+    conn = _MovingBoard()
+    wf = RNodeFlashWorkflow(conn, board, port="/dev/ttyACM0", sleep=lambda s: None)
+    results = wf.run_all()
+    assert all(r.success for r in results), [(r.name, r.message) for r in results]
+    h = conn.history
+    wipe = next(i for i, c in enumerate(h) if "--eeprom-wipe" in c)
+    assert "/dev/ttyACM0" in h[wipe]
+    prov = next(c for c in h[wipe + 1:] if " -r " in c and "--product" in c)
+    assert "/dev/ttyACM1" in prov, prov                     # followed the board
+    hash_read = next(c for c in h[wipe + 1:] if c.rstrip().endswith("-L"))
+    assert "/dev/ttyACM1" in hash_read
+    assert any("--firmware-hash " + conn.hash in c and "/dev/ttyACM1" in c for c in h)
+    # the probe asked the firmware itself before every write
+    assert sum("kiss_detect.py" in c for c in h) >= 3

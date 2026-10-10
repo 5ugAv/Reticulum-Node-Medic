@@ -36,8 +36,12 @@ def serial_for_port(port: str) -> str | None:
         try:
             if os.path.realpath(link) == target:
                 base = os.path.basename(link)
-                m = _SERIAL_RE.search(base)
-                return m.group(1) if m else base
+                # ONE reader for every by-id name (provisioning.by_id): the
+                # chip MAC for an ESP32-S3, the hardware serial for an nRF52
+                # board such as the T114 (usb-Heltec_HT-n5262_<serial>-if00),
+                # which the old MAC-only pattern could not see (2026-10-10).
+                from provisioning.by_id import by_id_serial
+                return by_id_serial(base) or base
         except OSError:
             continue
     return None

@@ -526,7 +526,8 @@ class RNodeFlashWorkflow:
     def __init__(self, connection: Connection, board: RNodeBoard,
                  port: Optional[str] = None, band_mhz: int = 915,
                  version: str = FIRMWARE_VERSION, flash_timeout: int = 400,
-                 radio=None, work_ports_fn=None):
+                 radio=None, work_ports_fn=None,
+                 sleep=None):
         self.connection = connection
         self.board = board
         self.port = port
@@ -547,6 +548,8 @@ class RNodeFlashWorkflow:
         # it the single-board check counts Jonesey/the GPS tracker and can
         # NEVER pass on the real medic (first live V3 lap, 2026-08-01).
         self.work_ports_fn = work_ports_fn
+        import time as _time
+        self.sleep = sleep or _time.sleep          # tests pass a no-op
         self.results: List[StepResult] = []
 
     # -- steps -------------------------------------------------------------
@@ -1149,16 +1152,40 @@ class RNodeFlashWorkflow:
                                           tries=30, delay=1.0)
         if settled:
             self.port = settled
-        for cmd in self.board.provision_commands(self.port):
-            self.connection.run(f"sleep 3 && {cmd}", timeout=self.flash_timeout)
+        # EVERY write below reboots an nRF52 board a beat after rnodeconf
+        # exits, and the dying tty lingers (T114, 2026-10-10: the reset after
+        # --eeprom-wipe landed in the middle of the -r provisioning, left the
+        # EEPROM invalid, moved the board to another tty and sent the hash
+        # read to the old one). So before each command, wait until the
+        # firmware ITSELF answers on the port the board holds NOW.
+        port, why = self._settle_nrf("the firmware write", pre_serial)
+        if not port:
+            return StepResult("flash", False, why)
+        self.port = port
+        n_cmds = len(self.board.provision_commands(self.port))
+        for i in range(n_cmds):
+            cmd = self.board.provision_commands(self.port)[i]
+            self.connection.run(cmd, timeout=self.flash_timeout)
+            port, why = self._settle_nrf("provisioning", pre_serial)
+            if not port:
+                return StepResult("flash", False, why)
+            self.port = port
 
         # The firmware hash is what clears FIRMWARE CORRUPT. Ask the DEVICE what
         # it computed rather than hashing the file here: if the two disagree the
-        # right answer is to leave it unset and say so, not to paper over it.
-        code, out, err = self.connection.run(
-            f"rnodeconf {self.port} -L", timeout=120)
+        # board's own check is the one that matters.
         import re as _re
-        m = _re.search(r"\b([0-9a-f]{64})\b", (out or "") + (err or ""))
+        m = None
+        for _ in range(3):
+            code, out, err = self.connection.run(
+                f"rnodeconf {self.port} -L", timeout=120)
+            m = _re.search(r"\b([0-9a-f]{64})\b", (out or "") + (err or ""))
+            if m:
+                break
+            port, why = self._settle_nrf("the hash read", pre_serial)
+            if not port:
+                break
+            self.port = port
         if not m:
             return StepResult(
                 "flash", True,
@@ -1168,10 +1195,41 @@ class RNodeFlashWorkflow:
                 "the board and sound.")
         self.connection.run(
             f"rnodeconf {self.port} --firmware-hash {m.group(1)}", timeout=120)
+        port, _why = self._settle_nrf("the firmware-hash write", pre_serial)
+        if port:
+            self.port = port
         return StepResult(
             "flash", True,
             f"Flashed the medic's own {self.board.display_name} build over "
             "serial DFU, provisioned it, and set its firmware hash.")
+
+    def _settle_nrf(self, after: str, usb_serial: str, laps: int = 12):
+        """``(port, "")`` once the firmware answers on the port the board holds
+        now, else ``("", why)``. The gate after any write that reboots an
+        nRF52 board (--eeprom-wipe, -r, --firmware-hash): the reset fires a
+        beat AFTER the host command exits and the dying tty lingers, so the
+        port is re-resolved by USB serial EVERY lap and probed short, the way
+        workflows.rtnode_build._nrf_settle does (RAK births two and three,
+        2026-08-20). The probe is the firmware's own CMD_DETECT answer: a
+        maiden boot can format its filesystem for tens of seconds with the
+        port present and silent."""
+        if not usb_serial:
+            return self.port, ""
+        state = "not on USB"
+        for _ in range(laps):
+            port = find_port_by_usb_serial(self.connection, usb_serial, tries=1)
+            if port:
+                if self.connection.run(
+                        f"python3 ~/reticulum-tool/scripts/kiss_detect.py {port} 8",
+                        timeout=25)[0] == 0:
+                    return port, ""
+                state = "on USB but not answering"
+            else:
+                state = "not on USB"
+                self.sleep(2)
+        return "", (f"The board is {state} after {after} — it may still be "
+                    "rebooting. Unplug it, plug it back in, and press Try again "
+                    "(everything already written is saved).")
 
     def _set_params(self) -> StepResult:
         # Bake the canonical radio params into the EEPROM AT BIRTH and leave the
@@ -1183,17 +1241,40 @@ class RNodeFlashWorkflow:
                                          timeout=self.flash_timeout)
         return StepResult("set_params", ok, detail)
 
+    #: rnodeconf's words for a board that is not answering YET (rebooting,
+    #: re-enumerating), as opposed to one that answers wrongly.
+    _NOT_BACK_YET = ("did not respond", "could not open", "no such file",
+                     "resource busy", "timed out", "timeout")
+
     def _verify(self) -> StepResult:
-        self._reacquire_port()          # ditto — the board may have moved
-        code, out, err = self.connection.run(f"rnodeconf {self.port} --info")
-        ok = "Device signature" in out and "Firmware version" in out
-        if not ok and "Device info" in (out or "") and "KeyError" in (err or "") + (out or ""):
-            # the board ANSWERED (its product/model came back) but this medic's
-            # stock rnodeconf has no name for the medic's custom product code
-            # 0xcb and crashes while printing it. Node Medic 1's tool was
-            # patched by hand; a clone's is not (Node Medic 2, 2026-10-06).
-            # The firmware hash check below is the real validation.
-            ok = True
+        # The last write reboots the board: on nRF52, set_params ends in a hard
+        # reset, and the firmware re-enumerates once more about twenty seconds
+        # later (T114, 2026-10-10: USB came back at 16:21:13 and again at
+        # 16:21:36; verify asked at 16:21:13 and called a healthy, signed board
+        # invalid). So ask again while the board is merely not back yet, for
+        # up to about fifty seconds. A board that ANSWERS wrongly fails at
+        # once, as before.
+        out = err = ""
+        ok = False
+        for attempt in range(8):
+            self._reacquire_port()          # the board may have moved
+            code, out, err = self.connection.run(f"rnodeconf {self.port} --info")
+            out, err = out or "", err or ""
+            ok = "Device signature" in out and "Firmware version" in out
+            if not ok and "Device info" in out and "KeyError" in err + out:
+                # the board ANSWERED (its product/model came back) but this
+                # medic's stock rnodeconf has no name for the medic's custom
+                # product code 0xcb and crashes while printing it. Node Medic
+                # 1's tool was patched by hand; a clone's is not (Node Medic 2,
+                # 2026-10-06). The firmware hash check below is the real
+                # validation.
+                ok = True
+            low = (out + err).lower()
+            not_back = (self.connection.run(f"test -e {self.port}")[0] != 0
+                        or any(w in low for w in self._NOT_BACK_YET))
+            if ok or not not_back or attempt == 7:
+                break
+            self.sleep(6)
         hash_note = ""
         if ok:
             hash_note = self._check_and_cure_firmware_hash()

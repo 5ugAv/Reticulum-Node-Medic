@@ -459,10 +459,12 @@ class MedicRadioSetup:
 
 
 def by_id_to_serial(by_id: str) -> str:
-    """``…_A1:B2:C3:D4:E5:F6-if00`` → ``A1:B2:C3:D4:E5:F6``."""
-    import re
-    m = re.search(r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})", by_id or "")
-    return m.group(1).upper() if m else ""
+    """``…_A1:B2:C3:D4:E5:F6-if00`` → ``A1:B2:C3:D4:E5:F6``; the T114's
+    ``usb-Heltec_HT-n5262_E5A1B2C3D4F60718-if00`` → ``E5A1B2C3D4F60718``.
+    The same reader the roster uses (ui.onboard_roster.serial_for_port), so
+    what lock_off records is what the flash guard later compares."""
+    from provisioning.by_id import by_id_serial
+    return by_id_serial(os.path.basename(by_id or "")).upper()
 
 
 KIOSK_UNIT = "reticulum-node-medic.service"

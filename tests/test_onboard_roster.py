@@ -152,3 +152,30 @@ def test_splitter_unit_is_a_template_not_a_serial():
     assert "__RNODE_BY_ID__" in setup and "sed " in setup, "installer fills it in"
     # and refuses rather than installing a unit that points nowhere
     assert "refusing to continue" in setup
+
+
+@pytest.mark.onboard_guard   # drives the real lookups
+def test_serial_for_port_reads_an_nrf52_boards_hardware_serial():
+    """A T114 as a medic's own radio (2026-10-10): its by-id name carries a
+    plain hardware serial, not a MAC, and the MAC-only pattern returned the
+    whole name — so lock_off could not record it and the guard would never
+    have matched it."""
+    link = "/dev/serial/by-id/usb-Heltec_HT-n5262_E5A1B2C3D4F60718-if00"
+    with patch("glob.glob", return_value=[link]), \
+         patch("os.path.realpath", side_effect=lambda x: "/dev/ttyACM1"
+               if x in (link, "/dev/ttyACM1") else x):
+        assert roster.serial_for_port("/dev/ttyACM1") == "E5A1B2C3D4F60718"
+
+
+@pytest.mark.onboard_guard   # drives the real lookups
+def test_what_lock_off_records_is_what_the_guard_compares(tmp_path):
+    from workflows.medic_radio import by_id_to_serial
+    link = "/dev/serial/by-id/usb-Heltec_HT-n5262_E5A1B2C3D4F60718-if00"
+    p = str(tmp_path / "onboard.json")
+    roster.register("jonesey_lora", by_id_to_serial(link), path=p)
+    with patch("glob.glob", return_value=[link]), \
+         patch("os.path.realpath", side_effect=lambda x: "/dev/ttyACM1"
+               if x in (link, "/dev/ttyACM1") else x):
+        assert roster.is_onboard("/dev/ttyACM1", path=p, service_serials=set()) is True
+    tracker = "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_a1:b2:c3:d4:e5:f6-if00"
+    assert by_id_to_serial(tracker) == "A1:B2:C3:D4:E5:F6"      # unchanged
