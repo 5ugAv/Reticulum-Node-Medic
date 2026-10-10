@@ -429,8 +429,9 @@ class MedicSetup:
                          "setup walkthrough.")
         lines.append("- A medic with no radio yet sets it up on the first page of the "
                      "walkthrough's tour (or later: Settings > This medic's radio and "
-                     "position finder): screw the aerial onto the Heltec Wireless "
-                     "Tracker, plug it in, and press Set up its radio. That writes the "
+                     "position finder): screw the aerial onto the board (a Heltec "
+                     "Wireless Tracker or a Heltec T114 with GPS), plug it in, tap "
+                     "its picture, and press Set up its radio. That writes the "
                      "radio software, the rnsd and lxmd services and the Reticulum "
                      "config.")
         if status.get("world_map") == "running":

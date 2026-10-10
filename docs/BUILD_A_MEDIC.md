@@ -174,9 +174,10 @@ The kiosk unit starts the app on its own screen. A medic that has never
 finished its setup opens the **setup walkthrough** (`provisioning/first_use.py`,
 `ui/setup_flow.py`): a short tour, one screen per mode.
 
-- The tour's first page sets up the medic's own radio and position finder:
-  screw the aerial onto the Heltec Wireless Tracker, plug it in (nothing else),
-  and press *Set up its radio*. The medic writes the Tracker image onto it,
+- The tour's first page sets up the medic's own radio and position finder,
+  on a Heltec Wireless Tracker or a Heltec T114 with its GPS module: screw the
+  aerial onto the board, plug it in (nothing else), tap its picture, and press
+  *Set up its radio*. The medic writes that board's radio image onto it,
   records it as its own radio (never flashed again by accident), writes the
   splitter, `rnsd` and `lxmd` units and `~/.reticulum/config`, restarts itself
   and checks that the radio and the GPS answer. It can be skipped and done
