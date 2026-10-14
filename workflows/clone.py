@@ -751,8 +751,56 @@ def give_parent_time_anchor(wf: "CloneWorkflow") -> StepResult:
     if not ok:
         return StepResult(name, False, "Could not write this medic's time anchor onto "
                           "the new medic. Press Retry.")
+    # And the other direction: this medic answers only identities it trusts,
+    # and a medic asks with its REPLY identity, which is not the unit identity
+    # the trust store recorded at generate_fresh_identity. So the new medic's
+    # reply identity is made HERE, now, and recorded against its unit.
+    recorded = ""
+    try:
+        reply_hash = _child_reply_identity(wf)
+        unit = getattr(wf, "fresh_identity_hash", None)
+        if reply_hash and unit:
+            from monitor import trust
+            trust.set_reply_identity(unit, reply_hash)
+            recorded = " This medic will answer it."
+        elif reply_hash:
+            recorded = (" This medic cannot record which unit asks (no fresh identity "
+                        "this run), so it will not answer until that is recorded.")
+    except Exception as exc:                                       # noqa: BLE001
+        print(f"[clone] the new medic's reply identity was not recorded: {exc}", flush=True)
     return StepResult(name, True, "The new medic can ask this medic the time over the "
-                      "mesh, whenever it has no satellite fix and no internet.")
+                      "mesh, whenever it has no satellite fix and no internet."
+                      + recorded)
+
+
+def _child_reply_identity(wf: "CloneWorkflow") -> str:
+    """The new medic's health-reply identity hash: read from the file if it
+    already has one (a Retry), else made here and written there, mode 600,
+    exactly as the app would make it on first start."""
+    import re
+    import tempfile
+    from monitor.health_reply import REPLY_IDENTITY_PATH
+    path = REPLY_IDENTITY_PATH
+    code, out, _e = wf.connection.run(
+        f"test -f {path} && python3 -c 'import RNS, os; print(RNS.Identity.from_file("
+        f"os.path.expanduser(\"{path}\")).hash.hex())'")
+    m = re.search(r"\b([0-9a-f]{32})\b", out or "")
+    if code == 0 and m:
+        return m.group(1)
+    import RNS
+    ident = RNS.Identity()
+    fd, local = tempfile.mkstemp(suffix=".key")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(ident.get_private_key())
+        if not wf.connection.push_file(local, "/tmp/nm-reply-identity"):
+            return ""
+    finally:
+        os.unlink(local)
+    code = wf.connection.run(
+        f"mkdir -p $(dirname {path}) && install -m 600 /tmp/nm-reply-identity {path} "
+        "&& rm -f /tmp/nm-reply-identity")[0]
+    return ident.hash.hex() if code == 0 else ""
 
 
 @clone_step

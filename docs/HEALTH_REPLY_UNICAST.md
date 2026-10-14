@@ -547,6 +547,10 @@ unchanged:
   announced identity is a unit it trusts (`monitor.trust`: a clone it made, or
   its maker) exactly as it answers its Pi nodes, to the asker's reply
   destination instead of `rtnode.health`.
+  A medic asks with its *reply* identity, which is not the unit identity the
+  trust store recorded at the clone, so the clone also makes the new medic's
+  reply identity and records its hash against the unit
+  (`monitor.trust.set_reply_identity`); the answering medic trusts either.
 - **Apply.** The TIME lands on the asker's reply destination, is verified
   under the anchored identity, checked for sanity, floor and NTP, applied
   through the medic's own scoped `timedatectl` path, and acknowledged.

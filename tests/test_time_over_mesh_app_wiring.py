@@ -592,3 +592,8 @@ def test_a_disciplined_medic_never_asks(tmp_path):
     h.svc._ask_started = -1e9
     assert h.svc.maybe_ask_sibling(ntp_synced=False) is False
     assert h.rns.sent == []
+
+
+def test_the_app_trusts_a_clones_reply_identity_as_well_as_its_unit():
+    body = func_source("ui/app.py", "_dest_is_trusted_unit")
+    assert "trust.is_trusted(h)" in body and "trust.is_trusted_reply(h)" in body

@@ -244,6 +244,39 @@ def is_trusted(unit_hash: Optional[str], path: Optional[str] = None) -> bool:
     return bool(load(path)["units"].get(unit_hash, {}).get("trusted"))
 
 
+def set_reply_identity(unit_hash: str, reply_identity_hash: str,
+                       path: Optional[str] = None) -> Dict:
+    """Record the hash of a KNOWN unit's health-reply identity: the key it
+    announces its reply destination with, and so the key behind its time
+    requests. A medic's reply identity is not its unit identity (the reply
+    key is made on first start and labelled nothing), so a time request from
+    a trusted clone looked like a stranger's (2026-10-15). An unknown unit
+    gets nothing attached."""
+    path = path or CONFIG
+    store = load(path)
+    u = store["units"].get(unit_hash)
+    if u is None or not reply_identity_hash:
+        return store
+    u["reply_identity"] = str(reply_identity_hash).lower()
+    store["units"][unit_hash] = u
+    return save(store, path)
+
+
+def trusted_reply_identities(path: Optional[str] = None) -> set:
+    """The reply-identity hashes of every trusted, unrevoked unit."""
+    path = path or CONFIG
+    return {u["reply_identity"] for u in load(path)["units"].values()
+            if u.get("trusted") and not u.get("revoked_at") and u.get("reply_identity")}
+
+
+def is_trusted_reply(reply_identity_hash: Optional[str], path: Optional[str] = None) -> bool:
+    """Is this the reply identity of a trusted unit? Non-transitive, like
+    is_trusted."""
+    if not reply_identity_hash:
+        return False
+    return str(reply_identity_hash).lower() in trusted_reply_identities(path)
+
+
 def classify(unit_hash: str, path: Optional[str] = None) -> str:
     """'self' | 'trusted' | 'untrusted' | 'unknown'."""
     path = path or CONFIG

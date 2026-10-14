@@ -2798,7 +2798,10 @@ class ReticulumNodeMedicApp(App):
             if ident is None:
                 return False
             from monitor import trust
-            return bool(trust.is_trusted(ident.hash.hex()))
+            h = ident.hash.hex()
+            # a unit identity (what the trust store records at a clone), or the
+            # reply identity a trusted clone was given at its clone
+            return bool(trust.is_trusted(h) or trust.is_trusted_reply(h))
         except Exception:                                          # noqa: BLE001
             return False
 

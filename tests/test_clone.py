@@ -815,3 +815,42 @@ def test_no_anchor_is_not_fatal(monkeypatch):
     monkeypatch.setattr(clone, "_sibling_time_anchor", boom)
     r = _run(wf(conn()), "give_parent_time_anchor")
     assert r.success and r.skipped and "satellites or the internet" in r.message
+
+
+def test_the_clone_gets_a_reply_identity_this_medic_will_answer(monkeypatch, tmp_path):
+    """A medic asks with its REPLY identity, which the trust store never saw:
+    Node Medic 2's first request was refused as a stranger's (2026-10-15).
+    The clone now makes the new medic's reply identity and records it."""
+    import pytest
+    pytest.importorskip("RNS")
+    from monitor import trust
+    monkeypatch.setattr(clone, "_sibling_time_anchor", lambda: {
+        "identity_hash": "ab" * 16, "reply_dest": "cd" * 16,
+        "name": "nodemedic", "since": "2026-10-15"})
+    trust.set_self("aa" * 16, "nodemedic")
+    trust.record_child_clone("bb" * 16, "Clone bb", "aa" * 16)
+    c = conn()
+    w = wf(c)
+    w.fresh_identity_hash = "bb" * 16
+    r = _run(w, "give_parent_time_anchor")
+    assert r.success and "This medic will answer it." in r.message
+    assert any("install -m 600 /tmp/nm-reply-identity" in cmd for cmd in c.history)
+    recorded = trust.trusted_reply_identities()
+    assert len(recorded) == 1 and len(next(iter(recorded))) == 32
+
+
+def test_a_retry_keeps_the_reply_identity_the_new_medic_already_has(monkeypatch):
+    from monitor import trust
+    monkeypatch.setattr(clone, "_sibling_time_anchor", lambda: {
+        "identity_hash": "ab" * 16, "reply_dest": "cd" * 16,
+        "name": "nodemedic", "since": "2026-10-15"})
+    trust.set_self("aa" * 16, "nodemedic")
+    trust.record_child_clone("bb" * 16, "Clone bb", "aa" * 16)
+    c = conn()
+    c.rules.insert(0, ("health_reply_identity && python3", 0, "ee" * 16 + "\n", ""))
+    w = wf(c)
+    w.fresh_identity_hash = "bb" * 16
+    r = _run(w, "give_parent_time_anchor")
+    assert r.success
+    assert not any("nm-reply-identity" in cmd for cmd in c.history)   # nothing overwritten
+    assert trust.is_trusted_reply("ee" * 16)

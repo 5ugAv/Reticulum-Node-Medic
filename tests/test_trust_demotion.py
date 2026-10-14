@@ -91,3 +91,20 @@ def test_unknown_builder_bare_mesh_hash_is_neighbour(trust_path):
     rec = reg.get("beefbeef")
     assert rec.builder_hash is None
     assert rec.provenance == "neighbour"
+
+
+# ---- a trusted clone's REPLY identity is what asks for the time (2026-10-15)
+
+def test_a_units_reply_identity_is_recorded_and_trusted_with_it(tmp_path):
+    from monitor import trust as t
+    p = str(tmp_path / "trust.json")
+    t.set_self("aa" * 16, "nodemedic", path=p)
+    t.record_child_clone("bb" * 16, "Clone bb", "aa" * 16, path=p)
+    t.set_reply_identity("bb" * 16, "CC" * 16, path=p)
+    assert t.is_trusted_reply("cc" * 16, path=p)             # case-folded
+    assert t.trusted_reply_identities(path=p) == {"cc" * 16}
+    assert not t.is_trusted_reply("dd" * 16, path=p)
+    t.set_reply_identity("zz" * 16, "ee" * 16, path=p)       # unknown unit: nothing attached
+    assert not t.is_trusted_reply("ee" * 16, path=p)
+    t.revoke("bb" * 16, path=p)
+    assert not t.is_trusted_reply("cc" * 16, path=p)          # revoked: no longer
