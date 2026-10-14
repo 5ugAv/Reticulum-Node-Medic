@@ -210,6 +210,18 @@ class MedicRadioSetup:
             return StepResult("flash_radio", True,
                               f"The {self.full} is already this medic's radio.",
                               skipped=True)
+        # A retry after a LATE failure (the T114, 2026-10-10: lock_off failed
+        # with the board flashed, wired and the splitter already holding its
+        # port): the medic's own services are bound to the attached board, so
+        # it carries this medic's radio software. Flashing it again would
+        # fight the splitter for the port and cost a needless write.
+        bound = self._service_bound_radio()
+        if bound:
+            self.by_id = bound
+            return StepResult("flash_radio", True,
+                              f"The {self.full} already carries this medic's radio "
+                              "software and its services are using it.",
+                              skipped=True)
         other = self._looks_like_another_board()
         if other:
             return StepResult("flash_radio", False,
@@ -386,6 +398,21 @@ class MedicRadioSetup:
         except Exception:                                      # noqa: BLE001
             pass
         return ""
+
+    def _service_bound_radio(self) -> str:
+        """The by-id path of the one attached board the medic's own radio
+        services are configured to use (the splitter unit names it), or ""."""
+        try:
+            from ui.onboard_roster import service_bound_serials
+            serials = service_bound_serials()
+        except Exception:                                      # noqa: BLE001
+            return ""
+        if not serials:
+            return ""
+        code, out, _e = self.connection.run("ls -1 /dev/serial/by-id/ 2>/dev/null")
+        hits = [n.strip() for n in (out or "").splitlines()
+                if any(s and s in n for s in serials)]
+        return f"/dev/serial/by-id/{hits[0]}" if len(hits) == 1 else ""
 
     def _attached_own_radio(self) -> str:
         """The by-id path of an attached board the roster already names as this

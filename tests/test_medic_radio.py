@@ -485,3 +485,31 @@ def test_no_two_boards_share_an_image_folder():
         if d:
             assert d not in seen, f"{b.key} and {seen[d]} share {d}"
             seen[d] = b.key
+
+
+def test_a_retry_after_a_late_failure_does_not_flash_the_board_again(monkeypatch):
+    """The T114 (2026-10-10): lock_off failed with the board flashed, wired and
+    the splitter holding its port; Try again would have flashed it again and
+    fought the splitter for the port. A board the medic's own services are
+    bound to already carries its software."""
+    import ui.onboard_roster as roster
+    monkeypatch.setattr(roster, "service_bound_serials", lambda: {"3C:0F:02:AA:BB:CC"})
+    flashes = []
+
+    class _NoFlash:
+        def run_all(self, on_progress=None):
+            flashes.append(1)
+            return [StepResult("flash", True, "")]
+    s = _setup(_conn(), flash=_NoFlash())
+    res = s.run_all()
+    first = res[0]
+    assert first.name == "flash_radio" and first.success and first.skipped
+    assert "already carries" in first.message and flashes == []
+    assert s.by_id.endswith("3C:0F:02:AA:BB:CC-if00")
+
+
+def test_a_fresh_board_is_still_flashed(monkeypatch):
+    import ui.onboard_roster as roster
+    monkeypatch.setattr(roster, "service_bound_serials", lambda: set())
+    res = _setup(_conn()).run_all()
+    assert res[0].name == "flash_radio" and res[0].success and not res[0].skipped
