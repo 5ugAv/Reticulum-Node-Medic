@@ -2915,6 +2915,10 @@ class ScanScreen(BoxLayout):
         roads = BoxLayout(orientation="vertical", size_hint=(1, None),
                           spacing=dp(8))
         roads.bind(minimum_height=roads.setter("height"))
+        # Walking or driving? A picture each (keeper, 2026-10-09): the pace,
+        # the wait and what a silence means all follow the choice
+        # (monitor.boundary_walk.MODES).
+        roads.add_widget(self._walk_mode_switch())
         # LARGE and unmistakable, as ordered — and worded as what the press
         # DOES to the file: the medic records where the OPERATOR stood, not
         # the node's position (review, 2026-09-23). Both grow to their words
@@ -3203,7 +3207,8 @@ class ScanScreen(BoxLayout):
         self._walk_session = BoundaryWalkSession(
             node_key=rec.dst_hash, node_name=name,
             node_lat=lat, node_lon=lon, now=_t.time(),
-            evidence_key=key or None)
+            evidence_key=key or None,
+            mode=getattr(self, "_walk_mode", "walking"))
         self._show_walk_hud()
         self._walk_ev = _Clock.schedule_interval(self._walk_tick, 1.0)
         self._walk_flash_ev = _Clock.schedule_interval(self._walk_flash, 0.5)
@@ -3396,7 +3401,12 @@ class ScanScreen(BoxLayout):
                                "check it stays lost.")
             hint.color = yellow
             return
-        if not w.samples:
+        if not w.samples and w.mode == "driving":
+            hint.text = tr("Drive away from the node. Node Medic pings every few "
+                           "seconds while you move and ends the test by itself "
+                           "once the link stays lost. A passenger watches the "
+                           "screen, never the driver.")
+        elif not w.samples:
             hint.text = tr("Start walking away from the node, in a straight "
                            "line if the ground lets you.")
         elif w.last_unplaced():
@@ -3413,22 +3423,76 @@ class ScanScreen(BoxLayout):
         self._walk_bg.pos = self._walk_lbl.pos
         self._walk_bg.size = self._walk_lbl.size
 
+    def _walk_mode_switch(self):
+        """Walking or driving, as two pictures: the walker with the backpack
+        (the front page's own) and a car on a road. The chosen one is lit;
+        a tap relights, nothing is rebuilt."""
+        from kivy.uix.image import Image as _Image
+        if not hasattr(self, "_walk_mode"):
+            self._walk_mode = "walking"
+        root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "assets", "ui")
+        choices = (("walking", tr("Walking"), os.path.join(root, "mode_backpack.png")),
+                   ("driving", tr("Driving"), os.path.join(root, "walk_driving.png")))
+        row = BoxLayout(orientation="horizontal", size_hint=(1, None),
+                        height=dp(118), spacing=dp(10))
+        self._walk_mode_btns = {}
+
+        def _paint():
+            for key, (btn, lbl) in self._walk_mode_btns.items():
+                lit = key == self._walk_mode
+                btn.background_color = theme.hex_to_rgba(
+                    theme.COLORS["green" if lit else "surface"])
+                lbl.color = theme.hex_to_rgba(
+                    theme.COLORS["background" if lit else "text_secondary"])
+                lbl.bold = lit
+
+        def _pick(key):
+            self._walk_mode = key
+            _paint()
+        for key, name, path in choices:
+            btn = Button(text="", background_normal="", size_hint_x=1)
+            inner = BoxLayout(orientation="vertical", padding=[dp(4), dp(4)],
+                              spacing=dp(2))
+            if os.path.isfile(path):
+                inner.add_widget(_Image(source=path, allow_stretch=True, keep_ratio=True))
+            lbl = Label(text=name, font_size=theme.font_sp("13sp"), size_hint_y=None,
+                        height=dp(22), halign="center")
+            inner.add_widget(lbl)
+            inner.size = btn.size
+            btn.bind(size=lambda _b, v, i=inner: setattr(i, "size", v),
+                     pos=lambda _b, v, i=inner: setattr(i, "pos", v))
+            btn.add_widget(inner)
+            btn.bind(on_release=lambda *_a, k=key: _pick(k))
+            self._walk_mode_btns[key] = (btn, lbl)
+            row.add_widget(btn)
+        _paint()
+        return row
+
     def _walk_tick(self, _dt):
         import time as _t
         w = getattr(self, "_walk_session", None)
-        if w is None or not w.due(_t.time()):
+        if w is None:
+            return
+        if w.should_auto_end():
+            # driving: the boundary is found and stayed lost — end and save
+            # by itself, so the driver never touches the screen
+            self.end_walk(persist=True)
             return
         # Where the operator IS when the ping goes out. rnpath -w returns at
-        # once on an answer and waits the full 15 s on silence, so a fix read
-        # when the result lands stamps every loss ~20 m further out than the
-        # hit before it (audit, 2026-09-21). Only a LIVE fix places a sample:
-        # a coasting fix (flag up, 0 sats) is where the receiver last was.
+        # once on an answer and waits the full wait on silence, so a fix read
+        # when the result lands stamps every loss further out than the hit
+        # before it (audit, 2026-09-21). Only a LIVE fix places a sample: a
+        # coasting fix (flag up, 0 sats) is where the receiver last was.
+        # Read BEFORE due(): driving pings only once the medic has moved.
         from monitor.boundary_walk import walk_position
         gps = None
         try:
             gps = walk_position(self._fix_reader() if self._fix_reader else None)
         except Exception:                                          # noqa: BLE001
             gps = None
+        if not w.due(_t.time(), gps=gps):
+            return
         w.begin_ping(_t.time())
 
         def _report(ok, snr_db=None, **path):
@@ -3436,7 +3500,10 @@ class ScanScreen(BoxLayout):
             _Clock.schedule_once(
                 lambda _d: self._walk_result(ok, snr_db, gps=gps, **path), 0)
         try:
-            self._walk_ping_fn(w.node_key, _report)
+            try:
+                self._walk_ping_fn(w.node_key, _report, wait=w.wait_s)
+            except TypeError:                   # an older two-argument pinger
+                self._walk_ping_fn(w.node_key, _report)
         except Exception:                                          # noqa: BLE001
             _report(False)
 

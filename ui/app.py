@@ -2588,7 +2588,7 @@ class ReticulumNodeMedicApp(App):
         except Exception:                                          # noqa: BLE001
             return None
 
-    def _walk_probe(self, dst_hash, report):
+    def _walk_probe(self, dst_hash, report, wait=15):
         """One boundary-walk ping: drop the cached path (cached paths lie),
         request a fresh one, wait up to 15 s — inside the 20 s cadence. Same
         honesty rules as _ping_node below, without the health-pull weight:
@@ -2606,7 +2606,7 @@ class ReticulumNodeMedicApp(App):
                     dst_hash or "")
                 if probe:
                     _local_run(f"rnpath --drop {probe} 2>/dev/null")
-                    out = _local_run(f"rnpath -w 15 {probe} 2>/dev/null")
+                    out = _local_run(f"rnpath -w {int(wait)} {probe} 2>/dev/null")
                     ok, hops = parse_path_probe(out)
                     if ok:
                         # Direct = one hop over this radio. Via the LAN or a
@@ -2619,7 +2619,7 @@ class ReticulumNodeMedicApp(App):
             # The 20 s cadence budget was asserted, never measured (audit,
             # 2026-09-21): one line per ping so the log can say.
             print(f"[walk] probe {(dst_hash or '')[:8]} ok={bool(ok)} "
-                  f"hops={hops} direct={direct} "
+                  f"hops={hops} direct={direct} wait={int(wait)}s "
                   f"{int((_t.time() - t0) * 1000)}ms", flush=True)
             report(bool(ok), hops=hops, direct=direct)
         threading.Thread(target=work, daemon=True).start()

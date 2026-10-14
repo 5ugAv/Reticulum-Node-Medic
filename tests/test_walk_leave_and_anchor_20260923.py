@@ -983,6 +983,9 @@ def _gate_screen(monkeypatch, saved, rec, sats=None):
         def _walk_panel(self):
             return _Box()
 
+        def _walk_mode_switch(self):          # walking/driving pictures: its own test
+            return _Box()
+
         @staticmethod
         def _walk_text(text, size, color, bold=False):
             texts.append((text, color))

@@ -34,6 +34,21 @@ from monitor.synapse_range import LinkFailure, walk_failures, CO_LOCATED_KM
 PING_EVERY_S = 20.0
 #: Consecutive silences before the banner declares the boundary found.
 LOST_AFTER_MISSES = 2
+#: How the range test paces itself. "walking" is the operator's own 2026-08-13
+#: number. "driving" (keeper, 2026-10-09: "if in the car then instead of ping
+#: every 20 seconds maybe we can do a ping every 5 seconds") pings as fast as
+#: a node can answer — on the 2026-10-04 walk direct answers took a median 5 s
+#: and 51 of 56 came within 6 s — and waits only 6 s on silence, because at
+#: 60 km/h a 15 s wait is 250 m past the edge per miss. It pings only after
+#: the medic has moved (no airtime spent at traffic lights), and its misses
+#: are never banked as range evidence: a car body eats signal.
+MODES = {
+    "walking": {"ping_every_s": 20.0, "wait_s": 15, "min_move_m": 0.0},
+    "driving": {"ping_every_s": 5.0, "wait_s": 6, "min_move_m": 60.0},
+}
+#: Driving: once the boundary is found, this many further silences end the
+#: test by themselves — the driver never has to touch the screen.
+DRIVING_AUTO_END_MISSES = 6
 
 _WALK_DIR = "~/.reticulum-node-medic"
 _OBS_FILE = "walk_observations.jsonl"
@@ -70,20 +85,48 @@ class BoundaryWalkSession:
     #: .anchor_key); None keeps the old behaviour of banking under the
     #: pinged destination.
     evidence_key: Optional[str] = None
+    #: "walking" or "driving" — see MODES.
+    mode: str = "walking"
     _misses: int = 0
     _last_ping_at: Optional[float] = None
     _pinging: bool = False
 
     # -- cadence ------------------------------------------------------------
 
-    def due(self, now: float) -> bool:
+    def _mode(self) -> dict:
+        return MODES.get(self.mode, MODES["walking"])
+
+    @property
+    def wait_s(self) -> int:
+        """How long one ping may wait for an answer in this mode."""
+        return int(self._mode()["wait_s"])
+
+    def due(self, now: float, gps: Optional[Tuple[float, float]] = None) -> bool:
         """Time for the next ping? First one fires immediately; never while
-        one is still in flight (a LoRa round trip can outlive the cadence)."""
+        one is still in flight (a LoRa round trip can outlive the cadence).
+        Driving, also never until the medic has moved MODES min_move_m from
+        the last sample (*gps* is where it is now): a car at the lights
+        would otherwise spend airtime measuring the same spot."""
         if self._pinging:
             return False
         if self._last_ping_at is None:
             return True
-        return (now - self._last_ping_at) >= PING_EVERY_S
+        m = self._mode()
+        if (now - self._last_ping_at) < m["ping_every_s"]:
+            return False
+        if m["min_move_m"] > 0 and gps is not None and self.samples:
+            last = self.samples[-1]
+            if last.get("lat") is not None and last.get("lon") is not None:
+                moved_m = _km(gps[0], gps[1], last["lat"], last["lon"]) * 1000.0
+                if moved_m < m["min_move_m"]:
+                    return False
+        return True
+
+    def should_auto_end(self) -> bool:
+        """Driving: the boundary is found and the link has stayed lost for
+        DRIVING_AUTO_END_MISSES more pings — end and save by itself."""
+        return (self.mode == "driving" and self.state == "lost"
+                and self._misses >= LOST_AFTER_MISSES + DRIVING_AUTO_END_MISSES)
 
     def begin_ping(self, now: float) -> None:
         self._last_ping_at = now
@@ -128,7 +171,8 @@ class BoundaryWalkSession:
             km = _km(lat, lon, self.node_lat, self.node_lon)
         sample = {"t": now, "lat": lat, "lon": lon, "km": km,
                   "connected": bool(ok), "snr_db": snr_db,
-                  "rssi_dbm": rssi_dbm, "hops": hops, "direct": direct}
+                  "rssi_dbm": rssi_dbm, "hops": hops, "direct": direct,
+                  "mode": self.mode}
         self.samples.append(sample)
         if ok:
             self._misses = 0
@@ -247,6 +291,10 @@ class BoundaryWalkSession:
         fails: List[LinkFailure] = []
         for i, s in enumerate(self.samples):
             if s["km"] is None or s["km"] <= CO_LOCATED_KM:
+                continue
+            # A silence from inside a car is the car as much as the distance:
+            # told in the story, never banked as this node's reach.
+            if s.get("mode") == "driving" and not s["connected"]:
                 continue
             for f in walk_failures([s], observed_at=s["t"],
                                    node_key=self.evidence_key

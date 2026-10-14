@@ -449,8 +449,12 @@ def test_the_walk_probe_stays_inside_the_cadence():
     probe = func_source("ui/app.py", "_walk_probe", cls=None) if False else \
         func_source("ui/app.py", "_walk_probe")
     import re
-    waits = [int(m) for m in re.findall(r"rnpath -w (\d+)", probe)]
-    assert waits and all(w < 20 for w in waits), waits
+    assert "rnpath -w {int(wait)}" in probe            # the mode's wait, not a constant
+    default = re.search(r"def _walk_probe\(self, dst_hash, report, wait=(\d+)\)",
+                        func_source("ui/app.py", "_walk_probe") or probe)
+    assert default and int(default.group(1)) == bw.MODES["walking"]["wait_s"] < 20
+    for name, m in bw.MODES.items():
+        assert m["wait_s"] <= m["ping_every_s"] + 1, name   # silence never halves the rate
 
 
 # -- 2026-09-21: a coasting fix must not place a walk sample -----------------
@@ -478,3 +482,79 @@ def test_screen_places_samples_through_walk_position():
     assert tick and res, "_walk_tick/_walk_result missing"
     assert "walk_position(" in tick.group(0)      # read at SEND time (2026-09-21)
     assert "_gps_reader" not in res.group(0) and "_fix_reader" not in res.group(0)
+
+
+# -- driving mode (keeper, 2026-10-09: "a switch that goes walking or driving")
+
+def _drive(now=1000.0):
+    return bw.BoundaryWalkSession(node_key="n", node_name="N", node_lat=-33.87,
+                                  node_lon=151.21, now=now, mode="driving")
+
+
+def test_driving_pings_every_five_seconds_and_waits_six():
+    s = _drive()
+    assert s.wait_s == 6 and bw.MODES["walking"]["wait_s"] == 15
+    assert s.due(1000.0)
+    s.begin_ping(1000.0)
+    s.ping_result(1003.0, True, gps=(-33.87, 151.21))
+    assert not s.due(1004.0)
+    assert s.due(1005.0, gps=(-33.88, 151.21))          # 1.1 km on, 5 s later
+
+
+def test_driving_does_not_ping_until_the_medic_has_moved():
+    s = _drive()
+    s.begin_ping(1000.0)
+    s.ping_result(1003.0, True, gps=(-33.87, 151.21))
+    assert not s.due(1060.0, gps=(-33.87, 151.21))      # at the lights: same spot
+    assert not s.due(1060.0, gps=(-33.8702, 151.21))     # 22 m: still not moved
+    assert s.due(1060.0, gps=(-33.871, 151.21))          # 110 m: moved
+    assert s.due(1060.0)                                  # no fix given: cadence only
+
+
+def test_walking_is_exactly_as_before():
+    s = bw.BoundaryWalkSession(node_key="n", node_name="N", node_lat=None, node_lon=None,
+                               now=1000.0)
+    assert s.mode == "walking" and s.wait_s == 15
+    s.begin_ping(1000.0)
+    s.ping_result(1002.0, True, gps=(-33.87, 151.21))
+    assert not s.due(1010.0, gps=(-33.87, 151.21))
+    assert s.due(1000.0 + bw.PING_EVERY_S, gps=(-33.87, 151.21))   # moved or not
+
+
+def test_driving_silences_are_told_but_never_banked_as_reach():
+    s = _drive()
+    s.begin_ping(1000.0); s.ping_result(1003.0, True, snr_db=5.0, gps=(-33.88, 151.21))
+    s.begin_ping(1010.0); s.ping_result(1016.0, False, gps=(-33.89, 151.21))
+    s.begin_ping(1020.0); s.ping_result(1026.0, False, gps=(-33.90, 151.21))
+    assert s.state == "lost" and s.counts()["misses"] == 2
+    obs, fails = s.evidence()
+    assert len(obs) == 1 and fails == []
+    assert all(x["mode"] == "driving" for x in s.samples)
+
+
+def test_driving_ends_by_itself_after_the_boundary_and_six_more_silences():
+    s = _drive()
+    s.begin_ping(1000.0); s.ping_result(1003.0, True, gps=(-33.88, 151.21))
+    t = 1010.0
+    for i in range(bw.LOST_AFTER_MISSES + bw.DRIVING_AUTO_END_MISSES):
+        assert not s.should_auto_end()
+        s.begin_ping(t); s.ping_result(t + 6, False, gps=(-33.89 - i * 0.001, 151.21))
+        t += 10
+    assert s.state == "lost" and s.should_auto_end()
+    w = bw.BoundaryWalkSession(node_key="n", node_name="N", node_lat=None, node_lon=None,
+                               now=1000.0)
+    for _ in range(12):
+        w.begin_ping(t); w.ping_result(t + 15, False); t += 20
+    assert w.state == "lost" and not w.should_auto_end()          # walking: the tap ends it
+
+
+def test_the_map_screen_offers_walking_or_driving_with_pictures():
+    scan = open("ui/screens/scan_screen.py", encoding="utf-8").read()
+    assert "def _walk_mode_switch" in scan and "walk_driving.png" in scan \
+        and "mode_backpack.png" in scan
+    assert 'mode=getattr(self, "_walk_mode", "walking")' in scan   # the session follows
+    assert "w.due(_t.time(), gps=gps)" in scan                     # moved-before-ping
+    assert "wait=w.wait_s" in scan                                  # the mode's wait
+    assert "w.should_auto_end()" in scan                            # driving ends itself
+    import os
+    assert os.path.isfile("assets/ui/walk_driving.png")
