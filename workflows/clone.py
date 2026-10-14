@@ -709,6 +709,52 @@ def record_child_trust(wf: "CloneWorkflow") -> StepResult:
                       f"Recorded clone {child[:8]} as a trusted child unit.{trusted}")
 
 
+def _sibling_time_anchor() -> dict:
+    """This medic's time-trust anchor (identity + reply destination), the
+    one a node gets at birth. A seam for the tests."""
+    from workflows.build import medic_time_anchor
+    return medic_time_anchor()
+
+
+@clone_step
+def give_parent_time_anchor(wf: "CloneWorkflow") -> StepResult:
+    """Let the new medic ask THIS medic the time over the mesh.
+
+    A Pi 5 has no clock battery; a clone with no internet and no satellite
+    fix boots into the past and stays there (Node Medic 2 ran five days
+    behind, 2026-10-15, beside a synced sibling on the same cable and mesh).
+    Nodes solve this by trusting their medic's signed time; a clone trusts
+    its parent the same way, with the same anchor file and the same
+    node-side policy (monitor.time_service, maybe_ask_sibling)."""
+    name = "give_parent_time_anchor"
+    try:
+        from monitor.node_time import trust_anchor_json
+        from monitor.time_service import SIBLING_TRUST_PATH
+        text = trust_anchor_json(_sibling_time_anchor())
+    except Exception as exc:                                       # noqa: BLE001
+        return StepResult(name, True, "This medic's time anchor could not be computed "
+                          f"({exc}); the new medic will keep time from satellites "
+                          "or the internet instead.", skipped=True)
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".json") as fh:
+        fh.write(text)
+        local = fh.name
+    try:
+        ok = wf.connection.push_file(local, "/tmp/nm-time-trust.json")
+    finally:
+        os.unlink(local)
+    if ok:
+        code = wf.connection.run(
+            "mkdir -p ~/.reticulum-node-medic && install -m 600 /tmp/nm-time-trust.json "
+            f"{SIBLING_TRUST_PATH} && rm -f /tmp/nm-time-trust.json")[0]
+        ok = code == 0
+    if not ok:
+        return StepResult(name, False, "Could not write this medic's time anchor onto "
+                          "the new medic. Press Retry.")
+    return StepResult(name, True, "The new medic can ask this medic the time over the "
+                      "mesh, whenever it has no satellite fix and no internet.")
+
+
 @clone_step
 def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     """Boot-into-the-tool, the way that PROVED OUT on HAWKEYE (2026-08-25):
@@ -1013,6 +1059,54 @@ def confirm_tool_running(wf: "CloneWorkflow") -> StepResult:
                       "Node Medic is not staying open on the new medic. Look at "
                       "its screen, then press Retry. ("
                       + " ".join((tail or "").split())[-160:] + ")")
+
+
+@clone_step
+def check_wifi_joined(wf: "CloneWorkflow") -> StepResult:
+    """Did the new medic join the Wi-Fi the keeper typed on the clone screen?
+
+    The first clone shipped an empty password and nobody knew for days; on
+    2026-10-10 a router rejected a mistyped password and the clone said
+    nothing. Asked here, over the cable, where the answer costs nothing.
+    Never fatal: the cable works either way, and the lock-down steps that
+    follow matter more than Wi-Fi."""
+    name = "check_wifi_joined"
+    _sleep = getattr(wf, "sleep", None)
+    out = wf.connection.run("nmcli -t -f NAME,TYPE con show 2>/dev/null")[1] or ""
+    ssids = [l.split(":", 1)[0] for l in out.splitlines()
+             if ":802-11-wireless" in l or ":wifi" in l]
+    if not ssids:
+        return StepResult(name, True, "No Wi-Fi was given to the new medic; it lives "
+                          "on the cable.", skipped=True)
+    ssid = ssids[0]
+    for _ in range(9):
+        active = wf.connection.run(
+            "nmcli -t -f NAME,TYPE,DEVICE con show --active 2>/dev/null")[1] or ""
+        if any((":802-11-wireless:" in l or ":wifi:" in l) and l.rstrip(":") != l.rstrip()
+               or (":802-11-wireless:" in l or ":wifi:" in l) and l.split(":")[-1].strip()
+               for l in active.splitlines()):
+            ip = wf.connection.run("ip -4 -br addr show wlan0 2>/dev/null | awk '{print $3}'")[1]
+            ip = (ip or "").strip().split("/")[0]
+            return StepResult(name, True, f"Joined '{ssid}'"
+                              + (f" as {ip}." if ip else "."))
+        said = wf.connection.run(
+            "journalctl -b -u NetworkManager --no-pager 2>/dev/null | grep -E "
+            "'no-secrets|WRONG_KEY|Handshake failed|No network with SSID' | tail -3")[1] or ""
+        if "WRONG_KEY" in said or "no-secrets" in said or "Handshake failed" in said:
+            return StepResult(name, True,
+                              f"The router rejected the Wi-Fi password for '{ssid}' "
+                              "(typed on the clone screen). The new medic works on the "
+                              "cable; retype the password in its Settings > Wi-Fi & "
+                              "Network.")
+        if "No network with SSID" in said:
+            return StepResult(name, True,
+                              f"'{ssid}' is not in range of the new medic. It works on "
+                              "the cable; it joins by itself when it sees that network.")
+        if _sleep:
+            _sleep(5)
+    return StepResult(name, True,
+                      f"The new medic has not joined '{ssid}' yet. It works on the "
+                      "cable; check its Settings > Wi-Fi & Network later.")
 
 
 def carry_the_time(wf: "CloneWorkflow") -> StepResult:

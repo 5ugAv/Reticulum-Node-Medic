@@ -62,6 +62,7 @@ STEP_TITLES = [
     ("generate_fresh_identity", "Giving it its own address"),
     ("stamp_lineage", "Recording which medic made it"),
     ("record_child_trust", "Linking it to this medic"),
+    ("give_parent_time_anchor", "Letting it ask this medic the time"),
     ("configure_autostart", "Starting Node Medic at power-on"),
     ("install_card_helper", "Letting it make medics too"),
     ("install_radio_helper", "Letting it set up its own radio"),
@@ -70,6 +71,7 @@ STEP_TITLES = [
     ("final_verification", "Checking everything"),
     ("restart_into_tool", "Restarting into Node Medic"),
     ("confirm_tool_running", "Making sure Node Medic stays open"),
+    ("check_wifi_joined", "Checking its Wi-Fi joined"),
     # the clone's last two steps: locked like its parent, then (for a new
     # community) this medic's key taken back (2026-10-08)
     ("harden_new_medic", "Locking its doors"),
@@ -91,6 +93,7 @@ STEP_EST_S = {
     "copy_monitoring_db": 12, "copy_kin_roster": 6,
     "generate_fresh_identity": 12, "stamp_lineage": 6,
     "record_child_trust": 4, "configure_autostart": 12, "bake_recovery_bootorder": 15,
+    "give_parent_time_anchor": 3,
     "install_carried_packages": 120, "install_card_helper": 8, "ensure_ssh_keypair": 8,
     # Both of these were missing, so _run fell back to 30s: install_display_stack
     # unpacks 72 carried debs, so its bar sprinted to 95% in half a minute and
@@ -100,6 +103,7 @@ STEP_EST_S = {
     "final_verification": 12,
     "restart_into_tool": 4,
     "confirm_tool_running": 90,
+    "check_wifi_joined": 45,
     "install_radio_helper": 8,
     # copy the kit, apply three changes, check them with fresh logins, confirm
     "harden_new_medic": 60,

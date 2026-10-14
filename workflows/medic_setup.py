@@ -1644,9 +1644,16 @@ CLONE_ROUTE: Dict[str, Route] = {
                                "keeper's own area is MAPS > Download offline map"),
     "copy_kin_roster": Route("not_here", why="a medic set up from GitHub has no fleet to "
                                              "inherit"),
+    "check_wifi_joined": Route("not_here", why="a medic set up from GitHub is on whatever "
+                                               "network its keeper gave the card; there is "
+                                               "no second medic to report to"),
     "generate_fresh_identity": Route("same", ("generate_fresh_identity",)),
     "stamp_lineage": Route("not_here", why="there is no parent to name; About reads the "
                                            "git checkout"),
+    "give_parent_time_anchor": Route("not_here", why="a medic set up from GitHub has no "
+                                                     "parent medic to ask the time; it "
+                                                     "keeps time from satellites or the "
+                                                     "internet"),
     "record_child_trust": Route("not_here", why="it writes the PARENT's trust store and "
                                                 "hands over the parent's signing key; "
                                                 "there is no parent"),

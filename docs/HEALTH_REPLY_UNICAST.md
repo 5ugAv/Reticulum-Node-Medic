@@ -527,3 +527,26 @@ What remains is birth's own time trust — `install_node_time_trust` and the
 `nm-settime` helper — which the push merely reused; it is still installed and
 still tested in `tests/test_time_trust_build.py`. The deleted module is in git
 history if a stale reporter is ever found in the field.
+
+### A medic asks a medic (2026-10-15)
+
+A medic has the same problem as a Pi node: no clock battery, and without
+internet or a satellite fix it boots into the past and stays there (Node
+Medic 2 ran five days behind beside a synced sibling on the same cable and
+mesh). So a medic can be a time *client* too, with the node-side policy
+unchanged:
+
+- **Trust.** The clone writes its parent's anchor (reply identity and
+  destination) to `~/.reticulum-node-medic/time_trust.json`
+  (`workflows.clone.give_parent_time_anchor`): the file a node gets at birth.
+- **Ask.** Each clock cycle, a medic whose own clock is not disciplined (no
+  recent satellite discipline, no NTP) sends a TIME_REQ to the anchored medic's
+  reply destination, naming its own reply destination, on the node schedule
+  (`TimeService.maybe_ask_sibling`). Nothing is sent while the clock is good.
+- **Answer.** The asked medic answers a request from a destination whose
+  announced identity is a unit it trusts (`monitor.trust`: a clone it made, or
+  its maker) exactly as it answers its Pi nodes, to the asker's reply
+  destination instead of `rtnode.health`.
+- **Apply.** The TIME lands on the asker's reply destination, is verified
+  under the anchored identity, checked for sanity, floor and NTP, applied
+  through the medic's own scoped `timedatectl` path, and acknowledged.

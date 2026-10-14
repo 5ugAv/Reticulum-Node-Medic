@@ -500,3 +500,95 @@ def test_the_medics_discipline_reads_gps_and_ntp_now(monkeypatch):
     assert ok and "GPS" in why
     log = func_source(APP, "_time_log", cls=CLS)
     assert "[time]" in log and "flush=True" in log and "LOG_NOTICE" in log
+
+
+# ---- a medic asks a trusted medic (2026-10-15: Node Medic 2 ran five days behind)
+
+SIB = b"\x22" * 16          # the sibling's reply destination hash
+N1 = b"\xa1" * 8
+T_GOOD = 1_790_000_000
+
+
+def _parent_anchor(tmp_path, parent):
+    from monitor import node_time as nt
+    rd = RNS.Destination.hash(parent, hr.REPLY_APP, *hr.REPLY_ASPECTS)
+    p = tmp_path / "time_trust.json"
+    p.write_text(nt.trust_anchor_json(nt.trust_anchor(parent.hash.hex(), rd.hex(),
+                                                        "parent", "2026-10-15")))
+    return str(p), bytes(rd)
+
+
+def test_a_trusted_medics_request_is_answered_to_its_reply_destination(tmp_path):
+    sibling = RNS.Identity()
+    h = _Harness(tmp_path, records=[], recall={SIB: sibling})
+    h.svc._trusted_unit = lambda dest_hex: dest_hex == SIB.hex()
+    assert h.svc.inbound(h.req(dest=SIB)) is True
+    pkt = h.rns.sent[0]
+    assert pkt.dest.name == "nodemedic.health.reply" and pkt.dest.ident is sibling
+    assert hr.verify_time(SIB, pkt.data, h.medic) == (int(T0), N1)
+    assert any("(a trusted medic) — answering" in m for m in h.logs)
+
+
+def test_a_medic_that_is_not_trusted_is_still_ignored(tmp_path):
+    stranger = RNS.Identity()
+    h = _Harness(tmp_path, records=[], recall={SIB: stranger})
+    h.svc._trusted_unit = lambda dest_hex: False
+    assert h.svc.inbound(h.req(dest=SIB)) is True
+    assert h.rns.sent == []
+    assert any("not a known Pi kin node or trusted medic" in m for m in h.logs)
+
+
+def test_a_sibling_time_is_verified_applied_through_the_medics_clock_and_acked(tmp_path):
+    parent = RNS.Identity()
+    path, parent_rd = _parent_anchor(tmp_path, parent)
+    h = _Harness(tmp_path, records=[], recall={parent_rd: parent},
+                 disciplined=(False, "no fix, no NTP"))
+    h.clock = [T_GOOD - 5 * 3600]                       # five hours behind
+    applied = []
+    h.svc._own_dest = lambda: SIB
+    h.svc._sibling_trust = path
+    h.svc._sibling_state = str(tmp_path / "sib_state.json")
+    h.svc._apply = lambda epoch: (applied.append(epoch) or True, "set")
+    pkt = hr.build_time(SIB, T_GOOD, N1, parent.sign)
+    assert h.svc.inbound(pkt) is True
+    assert applied == [T_GOOD]
+    ack = h.rns.sent[-1]
+    assert ack.dest.name == "nodemedic.health.reply" and ack.dest.ident is parent
+    assert ack.data[0] == hr.OPCODE_TIME_ACK and len(ack.data) == hr.TIME_ACK_LEN
+    assert h.svc._ask_state.last_set_at == h.mono[0]
+
+
+def test_a_time_signed_by_someone_else_is_not_applied(tmp_path):
+    parent, other = RNS.Identity(), RNS.Identity()
+    path, parent_rd = _parent_anchor(tmp_path, parent)
+    h = _Harness(tmp_path, records=[], recall={parent_rd: parent},
+                 disciplined=(False, "no fix, no NTP"))
+    applied = []
+    h.svc._own_dest = lambda: SIB
+    h.svc._sibling_trust = path
+    h.svc._sibling_state = str(tmp_path / "sib_state.json")
+    h.svc._apply = lambda epoch: (applied.append(epoch) or True, "set")
+    assert h.svc.inbound(hr.build_time(SIB, T_GOOD, N1, other.sign)) is True
+    assert applied == [] and h.rns.sent == []
+
+
+def test_an_undisciplined_medic_asks_its_trusted_medic(tmp_path):
+    parent = RNS.Identity()
+    path, parent_rd = _parent_anchor(tmp_path, parent)
+    h = _Harness(tmp_path, records=[], recall={parent_rd: parent},
+                 disciplined=(False, "no fix, no NTP"))
+    h.svc._own_dest = lambda: SIB
+    h.svc._sibling_trust = path
+    h.svc._ask_started = -1e9                           # past the grace
+    assert h.svc.maybe_ask_sibling(ntp_synced=False) is True
+    sent = h.rns.sent[-1]
+    assert sent.dest.name == "nodemedic.health.reply" and sent.dest.ident is parent
+    assert hr.parse_time_req(sent.data)[0] == SIB
+    assert h.svc.maybe_ask_sibling(ntp_synced=False) is False   # not again at once
+
+
+def test_a_disciplined_medic_never_asks(tmp_path):
+    h = _Harness(tmp_path)                              # GPS set this clock 1 min ago
+    h.svc._ask_started = -1e9
+    assert h.svc.maybe_ask_sibling(ntp_synced=False) is False
+    assert h.rns.sent == []

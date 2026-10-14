@@ -320,7 +320,8 @@ class TimeState:
 def handle_time(node_dest: bytes, payload: bytes, rns, trust_path: str = TRUST_PATH,
                 now: Callable[[], float] = None, run: Callable = run_argv,
                 log: Callable[[str], None] = None, ntp_synced: Optional[bool] = None,
-                state_path: str = TIME_STATE_PATH, issued: Optional[IssuedNonces] = None
+                state_path: str = TIME_STATE_PATH, issued: Optional[IssuedNonces] = None,
+                apply: Optional[Callable[[int], Tuple[bool, str]]] = None
                 ) -> Optional[Tuple[bytes, int, int]]:
     """A 0x05 landed on the node's health destination. Returns (nonce,
     before_s, status) for the TIME_ACK, or None when nothing should be
@@ -371,7 +372,7 @@ def handle_time(node_dest: bytes, payload: bytes, rns, trust_path: str = TRUST_P
         _log("TIME (%s) from medic %s: clock already within %d s (delta %+d s) - not moved"
              % (kind, medic, CLOCK_SLOP_S, medic_time - before))
         return (nonce, before, TIME_STATUS_NOT_NEEDED)
-    ok, out = apply_time(medic_time, run)
+    ok, out = apply(medic_time) if apply is not None else apply_time(medic_time, run)
     if ok:
         remembered = save_last_applied(medic_time, state_path)
         _log("TIME (%s) from medic %s: clock set to %d (was %+d s off); helper says: %s%s"

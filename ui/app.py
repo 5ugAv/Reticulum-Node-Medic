@@ -895,7 +895,11 @@ class ReticulumNodeMedicApp(App):
             self._time_ledger, rns=self._rns_module,
             reply_ident=lambda: self._reply_ident,
             registry=lambda: self.monitor_service.registry,
-            disciplined=self._medic_clock_disciplined, log=self._time_log)
+            disciplined=self._medic_clock_disciplined, log=self._time_log,
+            trusted_unit=self._dest_is_trusted_unit,
+            own_dest=lambda: (self._reply_dest.hash if self._reply_dest is not None
+                              else None),
+            apply=self._apply_sibling_time)
 
         credits = Screen(name="credits")
         # Wrapped like every other mode (operator, 2026-09-22: "every screen").
@@ -2784,6 +2788,32 @@ class ReticulumNodeMedicApp(App):
         import RNS
         return RNS
 
+    def _dest_is_trusted_unit(self, dest_hex: str) -> bool:
+        """Is the identity that announced *dest_hex* a unit this medic trusts
+        (a clone it made, or its own parent)? Time over the mesh is answered
+        only for those and for the medic's own Pi nodes."""
+        try:
+            RNS = self._rns_module()
+            ident = RNS.Identity.recall(bytes.fromhex(dest_hex))
+            if ident is None:
+                return False
+            from monitor import trust
+            return bool(trust.is_trusted(ident.hash.hex()))
+        except Exception:                                          # noqa: BLE001
+            return False
+
+    def _apply_sibling_time(self, epoch: int):
+        """Set this medic's clock to a verified sibling time through the same
+        scoped commands the satellite discipline uses."""
+        import subprocess
+        from monitor.gps_clock import apply_clock
+
+        def run(argv):
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+            return r.returncode, r.stdout, r.stderr
+        ok = apply_clock(int(epoch), run)
+        return ok, ("set" if ok else "timedatectl refused")
+
     def _medic_clock_disciplined(self):
         """Is this medic's own clock worth signing? GPS's last discipline
         (monitor.gps_clock stamps it) or timedatectl's NTPSynchronized —
@@ -3607,6 +3637,18 @@ class ReticulumNodeMedicApp(App):
             st = read_splitter_state()
             import time
             sys_now = time.time()
+            # no satellite fix and no NTP: ask a trusted medic over the mesh
+            # (does nothing while the clock is disciplined)
+            try:
+                if self._time_service is not None:
+                    ntp_now = None
+                    try:
+                        ntp_now = bool(td.ntp_synchronized())
+                    except Exception:                              # noqa: BLE001
+                        ntp_now = None
+                    self._time_service.maybe_ask_sibling(ntp_now)
+            except Exception as e:                                 # noqa: BLE001
+                self._time_log("asking a medic for the time failed: %s" % e)
             if not st:
                 from monitor.gps_clock import REASON_NO_FIX
                 self._gps_disciplinarian.last_reason = REASON_NO_FIX

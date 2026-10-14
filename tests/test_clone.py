@@ -31,6 +31,7 @@ EXPECTED_STEPS = [
     "generate_fresh_identity",
     "stamp_lineage",
     "record_child_trust",
+    "give_parent_time_anchor",
     "configure_autostart",
     "bake_recovery_bootorder",
     "install_card_helper",
@@ -39,6 +40,7 @@ EXPECTED_STEPS = [
     "final_verification",
     "restart_into_tool",
     "confirm_tool_running",
+    "check_wifi_joined",
     # every clone ends locked like its parent; a new community's clone then
     # loses this medic's key, as the very last thing done to it (2026-10-08)
     "harden_new_medic",
@@ -524,8 +526,9 @@ def _started(c):
 
 
 def test_the_lock_steps_are_the_very_last_two():
-    assert [n for n, _ in wf().steps][-3:] == [
-        "confirm_tool_running", "harden_new_medic", "remove_parent_key"]
+    assert [n for n, _ in wf().steps][-4:] == [
+        "confirm_tool_running", "check_wifi_joined", "harden_new_medic",
+        "remove_parent_key"]
 
 
 def test_harden_installs_the_kit_root_owned_then_checks_then_confirms():
@@ -747,3 +750,68 @@ def test_final_verification_names_a_missing_radio_helper():
     w.fresh_identity_generated = True
     r = _run(w, "final_verification")
     assert not r.success and "radio set-up helper missing" in r.message
+
+
+# ---- the new medic's Wi-Fi: say what happened (2026-10-10 rejected password) --
+
+def _wifi_conn(configured, active="", journal=""):
+    c = conn()
+    c.rules.insert(0, ("nmcli -t -f NAME,TYPE con show", 0, configured, ""))
+    c.rules.insert(0, ("nmcli -t -f NAME,TYPE,DEVICE con show --active", 0, active, ""))
+    c.rules.insert(0, ("journalctl -b -u NetworkManager", 0, journal, ""))
+    c.rules.insert(0, ("ip -4 -br addr show wlan0", 0, "192.168.1.77/24", ""))
+    return c
+
+
+def test_wifi_step_reports_a_rejected_password_instead_of_silence():
+    c = _wifi_conn("Home_5g:802-11-wireless\nWired connection 1:802-3-ethernet\n",
+                   active="Wired connection 1:802-3-ethernet:eth0\n",
+                   journal="wlan0: CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home_5g\" "
+                           "auth_failures=1 duration=10 reason=WRONG_KEY\n")
+    w = wf(c)
+    w.sleep = lambda s: None
+    r = _run(w, "check_wifi_joined")
+    assert r.success and not r.skipped
+    assert "rejected the Wi-Fi password for 'Home_5g'" in r.message
+    assert "cable" in r.message and "Settings" in r.message
+
+
+def test_wifi_step_says_joined_with_the_address():
+    c = _wifi_conn("Home_5g:802-11-wireless\n",
+                   active="Home_5g:802-11-wireless:wlan0\n")
+    r = _run(wf(c), "check_wifi_joined")
+    assert r.success and "Joined 'Home_5g' as 192.168.1.77." == r.message
+
+
+def test_wifi_step_is_skipped_when_no_wifi_was_given():
+    c = _wifi_conn("Wired connection 1:802-3-ethernet\n")
+    r = _run(wf(c), "check_wifi_joined")
+    assert r.success and r.skipped and "cable" in r.message
+
+
+def test_wifi_step_never_fails_the_clone():
+    c = _wifi_conn("Home_5g:802-11-wireless\n", active="", journal="")
+    w = wf(c)
+    w.sleep = lambda s: None
+    r = _run(w, "check_wifi_joined")
+    assert r.success and "not joined 'Home_5g' yet" in r.message
+
+
+# ---- the clone can ask its parent the time over the mesh (2026-10-15) -------
+
+def test_the_clone_gets_its_parents_time_anchor(monkeypatch):
+    monkeypatch.setattr(clone, "_sibling_time_anchor", lambda: {
+        "identity_hash": "ab" * 16, "reply_dest": "cd" * 16,
+        "name": "nodemedic", "since": "2026-10-15"})
+    c = conn()
+    r = _run(wf(c), "give_parent_time_anchor")
+    assert r.success and not r.skipped and "ask this medic the time" in r.message
+    assert any("time_trust.json" in cmd and "install -m 600" in cmd for cmd in c.history)
+
+
+def test_no_anchor_is_not_fatal(monkeypatch):
+    def boom():
+        raise RuntimeError("no reply identity here")
+    monkeypatch.setattr(clone, "_sibling_time_anchor", boom)
+    r = _run(wf(conn()), "give_parent_time_anchor")
+    assert r.success and r.skipped and "satellites or the internet" in r.message

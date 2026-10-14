@@ -29,7 +29,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 from monitor.health_poll import warm_path
 from monitor.health_reply import (KIND_REPLY, KIND_SHORT, KIND_TIME_ACK,
@@ -38,7 +38,7 @@ from monitor.health_reply import (KIND_REPLY, KIND_SHORT, KIND_TIME_ACK,
                                   TIME_STATUS_NOT_NEEDED, TIME_STATUS_REFUSED_NTP,
                                   TIME_STATUS_REFUSED_STALE, TIME_STATUS_SET,
                                   build_time, classify_inbound, parse_time_req,
-                                  time_ack_nonce, verify_time_ack)
+                                  time_ack_nonce, verify_time_ack, REPLY_APP, REPLY_ASPECTS, OPCODE_TIME, TIME_LEN, build_time_ack)
 from monitor.node_time import epoch_is_sane
 from monitor.time_ledger import TIME_PUSH_EVERY_S, TimeLedger
 
@@ -46,6 +46,19 @@ from monitor.time_ledger import TIME_PUSH_EVERY_S, TimeLedger
 #: reporter bug, or a stranger replaying its request) costs one sender
 #: thread and one 81-byte packet a minute, no more.
 TIME_REQ_COOLDOWN_S = 60.0
+#: A medic with no internet and no satellite fix asks a TRUSTED medic for the
+#: time the way a Pi node asks its medic (2026-10-15: Node Medic 2 ran five
+#: days behind beside a synced sibling on the same cable and mesh). The
+#: anchor names the parent's reply identity and destination; the clone writes
+#: it (workflows.clone.give_parent_time_anchor).
+SIBLING_TRUST_PATH = "~/.reticulum-node-medic/time_trust.json"
+SIBLING_TIME_STATE = "~/.reticulum-node-medic/time_from_sibling.json"
+
+
+class _DestLike:
+    """What make_time_asker needs of a destination: its hash."""
+    def __init__(self, h: bytes):
+        self.hash = bytes(h)
 #: Sender threads alive at once. Each warms a path for up to WARM_WAIT_S;
 #: a flood of requests must not become a flood of threads.
 MAX_INFLIGHT_SENDS = 4
@@ -130,7 +143,12 @@ class TimeService:
                  disciplined: Callable[[], tuple], now: Callable[[], float] = time.time,
                  monotonic: Callable[[], float] = time.monotonic,
                  log: Callable[[str], None] = None, spawn: Callable = _thread_spawn,
-                 warm_wait_s: float = WARM_WAIT_S, urandom: Callable[[int], bytes] = os.urandom):
+                 warm_wait_s: float = WARM_WAIT_S, urandom: Callable[[int], bytes] = os.urandom,
+                 trusted_unit: Optional[Callable[[str], bool]] = None,
+                 own_dest: Optional[Callable[[], Optional[bytes]]] = None,
+                 apply: Optional[Callable[[int], Tuple[bool, str]]] = None,
+                 sibling_trust_path: str = SIBLING_TRUST_PATH,
+                 sibling_state_path: str = SIBLING_TIME_STATE):
         self.ledger = ledger
         self.pending = PendingTimes(now=now)
         self._rns, self._reply_ident, self._registry = rns, reply_ident, registry
@@ -143,6 +161,13 @@ class TimeService:
         # on the first behavioural test, 2026-09-23).
         self._lock = threading.RLock()
         self._inflight = 0
+        # -- this medic as a sibling's client: ask, verify, apply, acknowledge
+        from monitor import node_time as _nt
+        self._trusted_unit, self._own_dest, self._apply = trusted_unit, own_dest, apply
+        self._sibling_trust = os.path.expanduser(sibling_trust_path)
+        self._sibling_state = os.path.expanduser(sibling_state_path)
+        self._ask_state = _nt.TimeState()
+        self._ask_started = self._mono()
         self._last_req_at: Dict[str, float] = {}
         self._last_log_at: Dict[str, float] = {}
 
@@ -172,6 +197,9 @@ class TimeService:
             n = time_ack_nonce(data)
             self._limited("ack_unknown", "TIME_ACK for a send this medic does not "
                           "remember (nonce %s) — dropped" % (n.hex() if n else "?"))
+            return True
+        if self._is_sibling_time(data):
+            self.on_sibling_time(data)
             return True
         if kind == KIND_SHORT:
             self._limited("short", "%d-byte packet on the reply destination is too "
@@ -206,10 +234,13 @@ class TimeService:
             return False
         node_dest, nonce = parsed
         dest_hex = node_dest.hex()
+        sibling = False
         if self.pi_kin_record(dest_hex) is None:
-            self._limited("req_unknown", "TIME_REQ from %s: not a known Pi kin node — "
-                          "ignored" % dest_hex[:8])
-            return False
+            sibling = self._is_trusted_sibling(dest_hex)
+            if not sibling:
+                self._limited("req_unknown", "TIME_REQ from %s: not a known Pi kin node "
+                              "or trusted medic — ignored" % dest_hex[:8])
+                return False
         with self._lock:
             last = self._last_req_at.get(dest_hex)
             mono = self._mono()
@@ -220,10 +251,12 @@ class TimeService:
             self._limited("req_cooldown", "TIME_REQ from %s within %d s of the last "
                           "— ignored" % (dest_hex[:8], TIME_REQ_COOLDOWN_S))
             return False
-        self._limited("req", "TIME_REQ from %s — answering" % dest_hex[:8])
-        return self._start_send(node_dest, nonce, "asked")
+        self._limited("req", "TIME_REQ from %s%s — answering"
+                      % (dest_hex[:8], " (a trusted medic)" if sibling else ""))
+        return self._start_send(node_dest, nonce, "asked", sibling)
 
-    def _start_send(self, node_dest: bytes, nonce: Optional[bytes], why: str) -> bool:
+    def _start_send(self, node_dest: bytes, nonce: Optional[bytes], why: str,
+                    sibling: bool = False) -> bool:
         with self._lock:
             full = self._inflight >= MAX_INFLIGHT_SENDS
             if not full:
@@ -234,7 +267,7 @@ class TimeService:
                           "flight" % (node_dest.hex()[:8], why, n))
             return False
         try:
-            self._spawn(self.send_time, node_dest, nonce, why)
+            self._spawn(self.send_time, node_dest, nonce, why, sibling)
         except Exception as e:                                     # noqa: BLE001
             with self._lock:
                 self._inflight -= 1
@@ -248,7 +281,8 @@ class TimeService:
 
     # -- the send ---------------------------------------------------------------------
 
-    def send_time(self, node_dest: bytes, nonce: Optional[bytes], why: str) -> bool:
+    def send_time(self, node_dest: bytes, nonce: Optional[bytes], why: str,
+                  sibling: bool = False) -> bool:
         """One signed TIME to a node's rtnode.health destination, on a sender
         thread. Refuses when the medic's own clock is not disciplined (says
         why at NOTICE, records the refusal). Then the two-phase pattern of
@@ -284,8 +318,10 @@ class TimeService:
                 self._log("TIME not sent to %s: no path from this stack (path requested; "
                           "the node's next ask will find one)" % dest_hex[:8])
                 return False
+            # a node listens on rtnode.health; a sibling medic on its reply destination
+            aspects = (REPLY_APP,) + tuple(REPLY_ASPECTS) if sibling else ("rtnode", "health")
             dest = RNS.Destination(node_ident, RNS.Destination.OUT, RNS.Destination.SINGLE,
-                                   "rtnode", "health")
+                                   *aspects)
             n = bytes(nonce) if nonce else self._urandom(8)
             now_s = int(self._now())                    # fresh after the warm wait
             pkt = build_time(node_dest, now_s, n, ident.sign)
@@ -336,6 +372,105 @@ class TimeService:
         return entry
 
     # -- the unasked push ----------------------------------------------------------------
+
+    # -- a trusted medic: answered, asked, applied ----------------------------------
+    def _is_trusted_sibling(self, dest_hex: str) -> bool:
+        """The app answers: is the identity behind *dest_hex* a unit this medic
+        trusts (monitor.trust: a clone it made, or the medic that made it)?"""
+        fn = self._trusted_unit
+        if fn is None:
+            return False
+        try:
+            return bool(fn(dest_hex))
+        except Exception:                                          # noqa: BLE001
+            return False
+
+    @staticmethod
+    def _is_sibling_time(data: bytes) -> bool:
+        b = bytes(data or b"")
+        return len(b) == TIME_LEN and b[0] == OPCODE_TIME
+
+    def on_sibling_time(self, data: bytes) -> bool:
+        """A signed TIME landed on this medic's reply destination: a trusted
+        medic answering this medic's ask (or pushing). The node-side policy
+        verifies it under the anchored identity, applies it through this
+        medic's own clock path, and acknowledges — exactly what a Pi node
+        does with its medic's time."""
+        from monitor import node_time as _nt
+        own = self._own_dest() if self._own_dest is not None else None
+        if not own:
+            self._limited("sib_no_dest", "TIME from a medic dropped: this medic's reply "
+                          "destination is not set up yet")
+            return False
+        try:
+            got = _nt.handle_time(bytes(own), data, self._rns(), trust_path=self._sibling_trust,
+                                  now=self._now, log=self._log, issued=self._ask_state.issued,
+                                  state_path=self._sibling_state, apply=self._apply)
+        except Exception as e:                                     # noqa: BLE001
+            self._log("TIME from a medic could not be handled: %s" % e)
+            return False
+        if got is None:
+            return False
+        nonce, before, status = got
+        if status == _nt.TIME_STATUS_SET:
+            self._ask_state.last_set_at = self._mono()
+        self._ack_sibling(bytes(own), nonce, before, status)
+        return True
+
+    def _ack_sibling(self, own: bytes, nonce: bytes, before: int, status: int) -> bool:
+        from monitor import node_time as _nt
+        from monitor.health_poll import warm_path
+        try:
+            trust = _nt.load_trust(self._sibling_trust)
+            RNS = self._rns()
+            medic = _nt.recall_trusted_medic(RNS, trust) if trust else None
+            ident = self._reply_ident()
+            if trust is None or medic is None or ident is None:
+                self._log("TIME_ACK to the medic not sent: trust, identity or reply "
+                          "identity missing")
+                return False
+            reply_dest = bytes.fromhex(trust["reply_dest"])
+            if not warm_path(reply_dest, RNS.Transport.has_path, RNS.Transport.request_path,
+                             wait_s=self._warm_wait_s):
+                self._log("TIME_ACK to the medic not sent: no path (path requested)")
+                return False
+            out = RNS.Destination(medic, RNS.Destination.OUT, RNS.Destination.SINGLE,
+                                  REPLY_APP, *REPLY_ASPECTS)
+            RNS.Packet(out, build_time_ack(own, nonce, before, status, ident.sign)).send()
+            self._log("TIME_ACK sent to medic %s: status=%d before=%d"
+                      % (trust["identity_hash"][:8], int(status), before))
+            return True
+        except Exception as e:                                     # noqa: BLE001
+            self._log("TIME_ACK to the medic failed: %s" % e)
+            return False
+
+    def maybe_ask_sibling(self, ntp_synced: Optional[bool] = None) -> bool:
+        """Once per cycle: a medic whose own clock is NOT disciplined (no
+        satellite fix lately, no NTP) asks its trusted medic for the time, on
+        the node-side schedule (grace, interval, backoff). Nothing is sent
+        while the clock is good. Returns True when a request went out."""
+        try:
+            ok, _reason = self._disciplined()
+        except Exception:                                          # noqa: BLE001
+            ok = False
+        if ok:
+            return False
+        from monitor import node_time as _nt
+        st, mono = self._ask_state, self._mono()
+        if not _nt.should_ask(mono, self._ask_started, st.last_ask_at, st.last_set_at,
+                              ntp_synced, st.consecutive_refusals):
+            return False
+        st.last_ask_at = mono
+        own = self._own_dest() if self._own_dest is not None else None
+        if not own:
+            self._limited("ask_no_dest", "not asking a medic for the time: this medic's "
+                          "reply destination is not set up yet")
+            return False
+        from monitor.pi_health_reporter import make_time_asker
+        ask = make_time_asker(self._rns(), _DestLike(own), trust_path=self._sibling_trust,
+                              log=lambda m, lvl=None: self._log(m),
+                              warm_wait_s=self._warm_wait_s, time_state=st)
+        return bool(ask())
 
     def maybe_push_time(self, node_dest: bytes) -> bool:
         """After a verified health reply: push a TIME unasked if no send OR

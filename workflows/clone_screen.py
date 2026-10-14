@@ -48,6 +48,7 @@ STEP_WORDS = {
     "generate_fresh_identity": "Giving it its own address",
     "stamp_lineage": "Recording which medic made it",
     "record_child_trust": "Linking it to this medic",
+    "give_parent_time_anchor": "Letting it ask this medic the time",
     "configure_autostart": "Starting Node Medic at power-on",
     "bake_recovery_bootorder": "Setting up a rescue path",
     "install_card_helper": "Letting it make medics too",
@@ -56,6 +57,7 @@ STEP_WORDS = {
     "final_verification": "Checking everything",
     "restart_into_tool": "Restarting into Node Medic",
     "confirm_tool_running": "Making sure Node Medic stays open",
+    "check_wifi_joined": "Checking its Wi-Fi joined",
     "harden_new_medic": "Locking its doors",
     "remove_parent_key": "Settling who keeps a key",
 }
