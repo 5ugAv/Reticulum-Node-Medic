@@ -84,3 +84,32 @@ def test_lxmd_is_mode_aware():
     # ...but a warning when propagation is actually wanted
     warn = check_lxmd(False, wants_propagation=True)
     assert warn.severity == SEV_WARN and warn.fix == "restart_lxmd"
+
+
+# ---- the screen panel's history (2026-10-15: Node Medic 2 came up dark) ------
+
+def _boot(label, inits, own=0):
+    kernel = "\n".join("drm-rp1-dsi 1f00130000.dsi: [drm] rp1dsi: Nominal Byte clock 125000000"
+                       for _ in range(inits))
+    marks = "\n".join("re-initialised at start: Panel DSI-2 re-initialised." for _ in range(own))
+    return (label, kernel, marks)
+
+
+def test_panel_history_counts_only_cures_done_by_hand():
+    from monitor.self_diagnose import check_panel_reinits, SEV_OK, SEV_WARN
+    # boot init only: nothing by hand
+    f = check_panel_reinits([_boot("2026-10-14 23:54", 1)])
+    assert f.severity == SEV_OK and "this boot" in f.detail and "not kept" in f.detail
+    # boot init + the medic's own start re-init: still nothing by hand
+    f = check_panel_reinits([_boot("b", 2, own=1), _boot("a", 2, own=1)])
+    assert f.severity == SEV_OK and "over the 2 boots" in f.detail
+    # boot init + one hand cure (Node Medic 2 on 2026-10-15)
+    f = check_panel_reinits([_boot("2026-10-15 00:59", 1), _boot("2026-10-14 23:54", 2)])
+    assert f.severity == SEV_WARN and f.data["by_hand"] == 1
+    assert "1 time(s)" in f.detail and "2026-10-14 23:54" in f.detail
+    # own re-init AND a hand cure in the same boot: the hand cure counts
+    f = check_panel_reinits([_boot("c", 3, own=1)])
+    assert f.severity == SEV_WARN and f.data["by_hand"] == 1
+    # no journal at all
+    f = check_panel_reinits([])
+    assert f.severity == SEV_WARN and "Cannot read the journal" in f.detail

@@ -373,6 +373,11 @@ ELSEWHERE = [
          '"sudo -n "', 'f"sudo -n {cmd}"',
          '"sudo -n install -m 644 /tmp/nm-usb0.conf " '
          '"/etc/NetworkManager/conf.d/99-nodemedic-usb0.conf"',
+         # the journal kept across reboots, written at clone time with the
+         # new medic's full sudo (2026-10-15)
+         '"sudo -n mkdir -p /etc/systemd/journald.conf.d && " '
+         'f"sudo -n install -m 644 {staged} " '
+         '"/etc/systemd/journald.conf.d/50-nodemedic.conf; " f"rm -f {staged}"',
          '"sudo -n timedatectl set-ntp true"', 'f"sudo -n date -u -s @{int(now)}"',
          'self.priv( "dd if=/tmp/nm-frame.raw of=/dev/fb0 bs=1M status=none")',
          'self.priv( "sh -c " + shlex.quote("printf \'%s\' " + shlex.quote(line) + " > /dev/tty1"))',

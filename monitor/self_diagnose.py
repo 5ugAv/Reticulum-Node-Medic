@@ -469,3 +469,51 @@ def summarize(findings: List[Finding]) -> dict:
     worst = SEV_CRIT if crit else (SEV_WARN if warn else SEV_OK)
     return {"worst": worst, "critical": len(crit), "warning": len(warn),
             "fixes": fixes, "healthy": worst == SEV_OK}
+
+
+# -- the screen panel: how often did a human have to re-initialise it? ------
+
+#: One line per panel initialisation in the kernel log (drm-rp1-dsi).
+PANEL_INIT_MARK = "Nominal Byte clock"
+#: What the medic's own start-up re-initialisation writes to the journal
+#: (provisioning.screen_fix.reinit_at_start, tag nodemedic-panel).
+PANEL_OWN_MARK = "re-initialised at start"
+
+
+def check_panel_reinits(boots) -> Finding:
+    """*boots* is ``[(label, kernel_text, own_marker_text), ...]``, newest
+    first, one per boot the journal holds (monitor.self_diagnose_runtime
+    gathers them). Per boot, the panel's initialisations minus the kernel's
+    own at boot minus the medic's own at start = cures done by hand (Settings
+    > Fix colours, or a power pull would not even show). Those are the
+    recurrences worth counting: the panel came up dark or scrambled and the
+    start-up cure did not hold (2026-10-15). A journal that holds one boot
+    cannot count the past, and says so."""
+    boots = list(boots or [])
+    by_hand = 0
+    last = None
+    for label, kernel_text, own_text in boots:
+        inits = sum(1 for ln in (kernel_text or "").splitlines() if PANEL_INIT_MARK in ln)
+        own = sum(1 for ln in (own_text or "").splitlines() if PANEL_OWN_MARK in ln)
+        extra = max(0, inits - 1 - own)
+        if extra:
+            by_hand += extra
+            if last is None:
+                last = label
+    n = len(boots)
+    if n == 0:
+        return Finding("panel_reinits", SEV_WARN,
+                       "Cannot read the journal, so the screen panel's history is unknown.",
+                       data={"boots": 0, "by_hand": 0})
+    kept = (f"over the {n} boots the journal keeps" if n > 1
+            else "this boot (the journal is not kept across reboots on this medic yet)")
+    if by_hand == 0:
+        return Finding("panel_reinits", SEV_OK,
+                       f"The screen panel has not needed re-initialising by hand {kept}.",
+                       data={"boots": n, "by_hand": 0})
+    return Finding("panel_reinits", SEV_WARN,
+                   f"The screen panel needed re-initialising by hand {by_hand} time(s) "
+                   f"{kept}, last during the boot of {last}. It comes up dark or "
+                   "scrambled sometimes; since 2026-10-15 the medic re-initialises it "
+                   "at every start, so a hand cure now means that did not hold.",
+                   data={"boots": n, "by_hand": by_hand, "last": last})

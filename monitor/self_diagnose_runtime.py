@@ -123,6 +123,7 @@ def gather(run: Runner = _default_run, now_fn=time.time) -> List[sd.Finding]:
         "rnsd", run("systemctl is-active rnsd 2>/dev/null").strip() == "active"))
     findings.append(sd.check_cpu_temp(run("vcgencmd measure_temp 2>/dev/null")))
     findings.append(sd.check_throttled(run("vcgencmd get_throttled 2>/dev/null")))
+    findings.append(sd.check_panel_reinits(_panel_boots(run)))
     findings.append(sd.check_wifi(
         run("nmcli -t -f IN-USE,SIGNAL,SSID dev wifi 2>/dev/null")))
     last_sync, sync_src = _clock_stamp()
@@ -221,3 +222,26 @@ def run_repair(key: str, run: Optional[Runner] = None,
     said_no = any(w in out.lower() for w in _REFUSAL_WORDS)
     ok = (code in (None, 0)) and not said_no
     return ok, (out.strip() or "Done.")
+
+
+def _panel_boots(run, limit: int = 20):
+    """``[(label, kernel_text, own_marker_text)]`` per boot the journal holds,
+    newest first, bounded. The listing's first column is the boot's index
+    (0 = this boot, negative = earlier); the third and fourth its first stamp."""
+    out = []
+    listing = run("journalctl --list-boots --no-pager 2>/dev/null") or ""
+    rows = []
+    for ln in listing.splitlines():
+        parts = ln.split()
+        if len(parts) >= 4 and parts[0].lstrip("-").isdigit():
+            rows.append((int(parts[0]), " ".join(parts[2:4])))
+    rows.sort(reverse=True)
+    if not rows:
+        # a journal that lists no boots (not kept, or unreadable): this boot
+        rows = [(0, "this boot")]
+    for idx, stamp in rows[:limit]:
+        kernel = run(f"journalctl -b {idx} -k --no-pager -o cat 2>/dev/null | "
+                     f"grep -a '{sd.PANEL_INIT_MARK}'") or ""
+        own = run(f"journalctl -b {idx} -t nodemedic-panel --no-pager -o cat 2>/dev/null") or ""
+        out.append((stamp, kernel, own))
+    return out

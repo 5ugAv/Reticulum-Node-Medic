@@ -51,7 +51,7 @@ def test_gather_all_healthy(monkeypatch):
     findings = rt.gather(run=run, now_fn=lambda: now)
     assert all(f.severity == SEV_OK for f in findings), \
         [f"{f.check}: {f.detail}" for f in findings if f.severity != SEV_OK]
-    assert len(findings) == 13                       # 3 radio/gps + 10 system health
+    assert len(findings) == 14      # + panel_reinits (2026-10-15)                       # 3 radio/gps + 10 system health
 
 
 def test_gather_catches_the_jonesey_incident(monkeypatch):

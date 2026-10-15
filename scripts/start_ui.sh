@@ -20,6 +20,17 @@ export KIVY_METRICS_DENSITY=1.5
 # pointer from the first finger and every tap would land twice.
 export SDL_TOUCH_MOUSE_EVENTS=0
 export SDL_MOUSE_TOUCH_EVENTS=0
+# THE PANEL'S FIRST INITIALISATION IS NOT OURS. At boot the kernel initialises
+# the touchscreen panel once, for its own console, and the compositor then
+# inherits that output as it is. That first initialisation sometimes comes up
+# dark or scrambled (Node Medic 2, 2026-10-15; provisioning/screen_fix.py holds
+# the 2026-08-25 evidence), and nothing in the system can tell: the
+# framebuffer, the backlight and the output all report fine. So the panel is
+# re-initialised HERE, under the compositor, before the first frame — the same
+# cure as Settings > Fix colours, at every start, about two seconds of dark.
+# It writes a tagged journal line, so Self Diagnose can tell these from cures
+# done by hand. Never blocks the start: a medic must come up with or without it.
+/usr/bin/python3 -c 'from provisioning.screen_fix import reinit_at_start; reinit_at_start()' >> "$HOME/ui.log" 2>&1 || true
 # Wait for rnsd's shared Reticulum instance BEFORE launching, so the app always
 # attaches as a CLIENT. If the app starts first (boot race), RNS silently makes
 # it the shared-instance SERVER — rnsd is orphaned and VITALS goes deaf to

@@ -60,6 +60,7 @@ def test_the_programs_the_sweep_found_missing_are_carried():
 
 #: Programs the code runs that every fresh Pi OS Lite card already has.
 FRESH_CARD_PROGRAMS = {
+    "logger",                       # bsdutils, essential on every card
     "sudo", "bash", "nmcli", "lsusb", "ssh-keygen", "ssh", "lsblk", "ip",
     "systemctl", "findmnt", "mount", "umount", "timedatectl", "sfdisk", "ping",
     "partprobe", "getent", "blockdev", "xz", "which", "vcgencmd", "udevadm",

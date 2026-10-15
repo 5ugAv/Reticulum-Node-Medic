@@ -502,6 +502,7 @@ def test_the_clone_carries_the_medics_own_python_packages_and_settings():
     assert "_carry_settings(wf)" in func_source("workflows/clone.py", "copy_monitoring_db")
     auto = func_source("workflows/clone.py", "configure_autostart")
     assert "99-nodemedic-usb0.conf" in auto
+    assert "50-nodemedic.conf" in auto                  # the journal kept across reboots
     trust = func_source("workflows/clone.py", "record_child_trust")
     assert "ensure_signing_key(" in trust and "trusted_keys" in trust
 

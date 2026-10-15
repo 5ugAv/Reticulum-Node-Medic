@@ -27,6 +27,7 @@ SKIP_DIRS = {"__pycache__", ".git", ".claude", "assets", "firmware", "docs",
 
 #: Called by something a static pass cannot see. Reason must be true.
 CALLED_INVISIBLY = {
+    "reinit_at_start": "run by scripts/start_ui.sh (python3 -c) before the first frame, 2026-10-15",
     # Framework overrides — Kivy / http.server / pytest call these by name.
     "on_stop": "Kivy App lifecycle hook, called by the framework.",
     "log_message": "http.server BaseHTTPRequestHandler override.",

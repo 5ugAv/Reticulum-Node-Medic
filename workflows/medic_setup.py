@@ -931,6 +931,8 @@ def _check_autostart(s: MedicSetup) -> Tuple[bool, str]:
     for path, what in (("/etc/udev/rules.d/71-nodemedic-touch-only.rules", "touch-only rule"),
                        ("/etc/NetworkManager/conf.d/99-nodemedic-usb0.conf",
                         "NetworkManager rule for the cable-birth link"),
+                       ("/etc/systemd/journald.conf.d/50-nodemedic.conf",
+                        "journal kept across reboots"),
                        ("~/.icons/default/cursors/left_ptr", "empty pointer theme")):
         if s.conn.run(f"test -f {path}")[0] != 0:
             missing.append(f"no {what}")

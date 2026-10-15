@@ -825,6 +825,20 @@ def configure_autostart(wf: "CloneWorkflow") -> StepResult:
     except Exception as exc:                                     # noqa: BLE001
         print("[clone] usb0 drop-in not carried:", exc, flush=True)
     home = f"/home/{user}" if user != "root" else "/root"
+    # the journal kept across reboots, so the new medic's Self Diagnose can
+    # count what happened on earlier boots (the panel's re-initialisations
+    # by hand, 2026-10-15); takes effect at its first boot. Staged in the
+    # user's home, never /tmp: root reads nothing from /tmp on a medic.
+    try:
+        jd = os.path.join(TOOL_ROOT, "scripts", "journald-nodemedic.conf")
+        staged = f"{home}/.nodemedic-journald.conf"
+        if os.path.isfile(jd) and wf.connection.push_file(jd, staged):
+            wf.connection.run("sudo -n mkdir -p /etc/systemd/journald.conf.d && "
+                              f"sudo -n install -m 644 {staged} "
+                              "/etc/systemd/journald.conf.d/50-nodemedic.conf; "
+                              f"rm -f {staged}")
+    except Exception as exc:                                     # noqa: BLE001
+        print("[clone] journal setting not carried:", exc, flush=True)
     unit = (
         "[Unit]\n"
         "Description=Reticulum Node Medic (tool)\n"

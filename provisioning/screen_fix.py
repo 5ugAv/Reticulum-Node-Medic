@@ -110,3 +110,36 @@ def reinit_panel(output: Optional[str] = None,
     return False, (f"{name} switched off but did not come back on "
                    f"({last_detail}). Pull the medic's power, wait 10 "
                    "seconds, and power back on.")
+
+
+#: The journal tag of the medic's OWN re-initialisations, so Self Diagnose
+#: can tell them from cures done by hand (monitor.self_diagnose.check_panel_reinits).
+JOURNAL_TAG = "nodemedic-panel"
+
+
+def reinit_at_start(runner: Callable = subprocess.run,
+                    sleep: Callable[[float], None] = time.sleep,
+                    log: Callable[[str], None] = print) -> bool:
+    """The kiosk's own re-initialisation, before the first frame.
+
+    At boot the kernel initialises the panel once, for its own console, and
+    the compositor inherits that output as it is. That first initialisation
+    sometimes comes up dark or scrambled (Node Medic 2, 2026-10-15) and
+    nothing can tell — framebuffer, backlight and output all report fine.
+    So the panel gets the proven cure at every start, under the compositor,
+    and the journal gets a tag line saying so. Never raises: a start must
+    never fail over its screen."""
+    try:
+        ok, message = reinit_panel(runner=runner, sleep=sleep)
+    except Exception as e:                                    # noqa: BLE001
+        ok, message = False, f"panel re-init at start failed: {e}"
+    line = ("re-initialised at start" if ok else "re-init at start FAILED") + ": " + message
+    try:
+        runner(["logger", "-t", JOURNAL_TAG, line], capture_output=True, text=True, timeout=5)
+    except Exception:                                         # noqa: BLE001
+        pass
+    try:
+        log(f"[panel] {line}")
+    except Exception:                                         # noqa: BLE001
+        pass
+    return ok
