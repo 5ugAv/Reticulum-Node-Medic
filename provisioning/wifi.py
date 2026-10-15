@@ -86,6 +86,32 @@ def radio_enabled(run: Runner = _default_run) -> bool:
     return not (code == 0 and (out or "").strip().lower().startswith("disabled"))
 
 
+def signal_percent(run: Runner = _default_run) -> Optional[int]:
+    """Signal of the network in use, 0-100, from nmcli's cached list (no
+    rescan, so it is cheap); None when not connected or unreadable."""
+    code, out = run(["nmcli", "-t", "-f", "IN-USE,SIGNAL,SSID", "device", "wifi"])
+    if code != 0:
+        return None
+    for line in (out or "").splitlines():
+        parts = _split_escaped(line)
+        if len(parts) >= 2 and parts[0].strip() == "*":
+            try:
+                return max(0, min(100, int(parts[1].strip())))
+            except ValueError:
+                return None
+    return None
+
+
+def wifi_summary(run: Runner = _default_run) -> dict:
+    """What the front page's Wi-Fi icon needs, in one reading:
+    ``{"enabled": bool, "connected": bool, "ssid": str, "signal": int|None}``."""
+    enabled = radio_enabled(run)
+    conn = current_connection(run) if enabled else None
+    signal = signal_percent(run) if conn else None
+    return {"enabled": enabled, "connected": conn is not None,
+            "ssid": (conn or {}).get("ssid", ""), "signal": signal}
+
+
 def set_radio(on: bool, run: Runner = _default_run) -> Tuple[bool, str]:
     """Switch the Wi-Fi radio on or off. NetworkManager's polkit refuses the
     login user, so this goes through the scoped sudo rule NM_RADIO. NM keeps

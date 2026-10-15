@@ -146,6 +146,19 @@ class HomeScreen(FloatLayout):
         self.add_widget(self.chat_badge)
         self.poster.bind(size=self._place_badge, pos=self._place_badge)
 
+        # The live Wi-Fi icon (keeper, 2026-10-15): grey when the radio is off,
+        # phone-style bars by strength when joined. It sits exactly over the
+        # poster's painted Wi-Fi symbol (ring centre fx 0.5000, fy 0.2875,
+        # r 21 px of 720, measured off front_page.png) and covers it; the tap
+        # there is the poster's own Wi-Fi zone, so it opens Wi-Fi settings.
+        from ui.widgets.wifi_icon import WifiIcon
+        self.wifi_icon = WifiIcon()
+        self.add_widget(self.wifi_icon)
+        self.poster.bind(size=self._place_wifi_icon, pos=self._place_wifi_icon)
+        from kivy.clock import Clock as _Clock
+        _Clock.schedule_once(self._poll_wifi, 1.5)
+        _Clock.schedule_interval(self._poll_wifi, 15)
+
         # Battery gauge — hidden until a UPS HAT is present (opacity 0). Sits under
         # the power slide on the left. Tune pos_hint on-device once the HAT is on.
         from ui.widgets.battery_gauge import BatteryGauge
@@ -307,6 +320,34 @@ class HomeScreen(FloatLayout):
         """Called by the app when the chat store changes."""
         self.chat_badge.set_count(int(n or 0))
         self._place_badge()
+
+    #: The painted symbol's ring on the poster: (left, top, w, h) in image
+    #: fractions, top measured downward (home_zones.rect_to_widget's form).
+    WIFI_SYMBOL = (0.5000 - 0.0375, 0.2875 - 0.0211, 0.0750, 0.0422)
+
+    def _place_wifi_icon(self, *_):
+        iw, ih = self.poster.norm_image_size
+        if iw < 1 or ih < 1:
+            return
+        x, y, w, h = rect_to_widget(self.WIFI_SYMBOL,
+                                    self.poster.center_x - iw / 2.0,
+                                    self.poster.center_y - ih / 2.0, iw, ih)
+        self.wifi_icon.size = (w, h)
+        self.wifi_icon.pos = (x, y)
+
+    def _poll_wifi(self, *_):
+        """Read the Wi-Fi state off the UI thread; paint on it."""
+        import threading
+
+        def work():
+            try:
+                from provisioning.wifi import wifi_summary
+                summary = wifi_summary()
+            except Exception:                                      # noqa: BLE001
+                return
+            from kivy.clock import Clock as _Clock
+            _Clock.schedule_once(lambda dt: self.wifi_icon.update(summary), 0)
+        threading.Thread(target=work, daemon=True).start()
 
     def _place_badge(self, *_):
         r = self._card_press_rect("chat")
