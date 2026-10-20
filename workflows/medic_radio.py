@@ -46,6 +46,7 @@ GPS_STATE = "/dev/shm/nodemedic-gps.json"
 #: the short name its messages use. Every one's firmware sends CMD_GPS frames.
 OWN_RADIO_BOARDS = {
     "heltec_wireless_tracker": "Tracker",
+    "heltec_wireless_tracker_v2": "Tracker V2",
     "heltec_t114_gps": "T114",
 }
 #: The same circuit board under another catalogue entry: a T114 that already

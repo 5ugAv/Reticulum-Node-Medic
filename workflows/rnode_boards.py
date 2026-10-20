@@ -105,6 +105,9 @@ class RNodeBoard:
     #: board: RNode community edition's T114 with its GPS module is 0xCB.
     board_variant: int = 0
     fqbn: str = ""                           # arduino-cli fully-qualified board name
+    #: A shorter name for the one-line picker rows ONLY (the 5" panel's 50-
+    #: character limit); everywhere else the full display_name is used.
+    picker_name: str = ""
     provision: Dict[str, str] = field(default_factory=dict)
     build_properties: List[str] = field(default_factory=list)
     carried_script: str = ""
@@ -142,7 +145,7 @@ class RNodeBoard:
         not in a note nobody opens (operator, 2026-08-06: "lillygo naming is
         confusing"). Both picker screens render this, so there is one string to
         keep short enough for the 5" panel and one string to test."""
-        return f"{self.display_name}  [{self.platform}]"
+        return f"{self.picker_name or self.display_name}  [{self.platform}]"
 
     # -- official (autoinstall) boards -------------------------------------
 
@@ -373,6 +376,54 @@ _CUSTOM = [
             "one."),
     ),
     RNodeBoard(
+        key="heltec_wireless_tracker_v2",
+        # proven stays "" until a certified birth: built 2026-10-20 from Heltec's
+        # own V2 pin map and Meshtastic's heltec_wireless_tracker_v2 definition,
+        # first flash pending (the ledger test enumerates proven births exactly).
+        display_name="Heltec Wireless Tracker V2",
+        picker_name="Heltec Tracker V2",     # the full name is 3 characters too wide for a picker row
+        flash_method="arduino_cli",
+        platform="ESP32-S3",
+        modem="SX1262",
+        bands="863-928 MHz",
+        # Rev 2.0 (Heltec sells it as "Wireless Tracker V2"): the V1.1 board with
+        # every pin the same, plus a KCT8103L PA/LNA front end (28 dBm) on
+        # GPIO4/5/7 that the fork's V2 block drives (Boards.h, BOARD_MODEL
+        # 0x53). Over USB it is identical to the V1 (ESP32-S3 native,
+        # 303a:1001), so the pickers show both pictures and the keeper reads
+        # the label ("Rev. 2.0"). The V1 image on this board leaves the front
+        # end unpowered: a dead radio, never a fallback.
+        board_model=0x53,
+        fqbn="esp32:esp32:esp32s3:CDCOnBoot=cdc",
+        build_properties=[
+            "build.partitions=no_ota",
+            "upload.maximum_size=2097152",
+        ],
+        # model 0xCC is this board in our rnodeconf patch (28 dBm); hwrev 2.
+        provision={"product": "cb", "model": "cc", "platform": "0x80",
+                   "hwrev": "2"},
+        # Its own output dir in the SAME tree as the V1 image, so neither build
+        # can overwrite the other.
+        output_dir="build/heltec_wireless_tracker_v2",
+        build_dir="~/overlay_test/RNode_Firmware/build/heltec_wireless_tracker_v2",
+        bootloader_instructions=(
+            "Attach the 915 MHz antenna FIRST (running the radio without an "
+            "antenna can damage it). The board has two buttons: USER (also "
+            "printed PRG) and RST. To enter bootloader/download mode: hold "
+            "USER (PRG), press and release RST once, then release USER. This "
+            "board uses the ESP32-S3 native USB (no UART chip), so if flashing "
+            "fails, unplug it, hold USER, plug it back in, then release USER "
+            "and retry."),
+        recovery_key="Wireless Tracker",
+        carried_script="flash_heltec_wireless_tracker_v2.sh",
+        notes=(
+            "ESP32-S3 + SX1262 + GPS with a 28 dBm amplifier. Our fleet setting "
+            "of 17 dBm is 17 dBm at the antenna: the firmware subtracts the "
+            "amplifier's gain. Flashing ERASES/re-provisions the EEPROM, so "
+            "unplug every other USB board first to avoid flashing the wrong "
+            "one."),
+    ),
+    RNodeBoard(
         key="heltec_meshpocket",
         display_name="Heltec MeshPocket",
         flash_method="serial_dfu",
@@ -561,7 +612,8 @@ def key_for_board_name(name) -> str:
         return raw
     low = raw.lower()
     for key, b in RNODE_BOARDS.items():
-        if key.lower() == low or (b.display_name or "").lower() == low:
+        if low in (key.lower(), (b.display_name or "").lower(),
+                   (b.picker_name or "").lower()):
             return key
     # Beacon / profile spellings: "Heltec32 V3" -> heltec32_v3.
     squashed = low.replace(" ", "_")

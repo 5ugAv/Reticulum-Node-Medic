@@ -1034,6 +1034,7 @@
   "Reachable — its other mesh address answered{where}, but the address its health beacons come from did not, so no health was requested. The node is up; its health reporter may be quiet, or that address is not announced where the medic can hear it.": "Nåbar — dess andra mesh-adress svarade{where}, men adressen som dess hälsofyrar kommer från gjorde det inte, så ingen hälsa begärdes. Noden är uppe; dess hälsorapportör kan vara tyst, eller så annonseras den adressen inte där medicen kan höra den.",
   "Reached the port but couldn't read the chip — hold BOOT, tap RST, release BOOT, then Detect again (S3 boards need download mode).": "Nådde porten men kunde inte läsa chipet — håll BOOT, tryck RST, släpp BOOT och Identifiera igen (S3-kort behöver nedladdningsläge).",
   "Read it off the paper, not the screen — that is what proves you can do it later.": "Läs den från pappret, inte skärmen — det är det som bevisar att du kan göra det senare.",
+  "Read the board's label: Rev. 2.0 is the V2.": "Läs etiketten på kortet: Rev. 2.0 är V2.",
   "Reading GPS…": "Läser GPS…",
   "Reading identity, writing certificate, enrolling as kin…": "Läser identitet, skriver certifikat, registrerar som kin…",
   "Reading the board…": "Läser kortet…",

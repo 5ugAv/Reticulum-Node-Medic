@@ -81,6 +81,20 @@ def first_failure(results, default: str = "",
 #: The board a fresh page assumes until the plug or the keeper says otherwise.
 DEFAULT_BOARD = "heltec_wireless_tracker"
 
+#: Boards the medic cannot tell apart over USB — the two Trackers share the
+#: ESP32-S3's native identity (303a:1001) — so the picker shows both pictures
+#: and says to read the board's label ("Rev. 2.0" is the V2).
+LOOK_ALIKES = {
+    "heltec_wireless_tracker": ("heltec_wireless_tracker_v2",),
+    "heltec_wireless_tracker_v2": ("heltec_wireless_tracker",),
+}
+
+
+def look_alikes(key: str):
+    """The own-radio boards that look exactly like *key* over USB, or ()."""
+    from workflows.medic_radio import OWN_RADIO_BOARDS
+    return tuple(k for k in LOOK_ALIKES.get(key, ()) if k in OWN_RADIO_BOARDS)
+
 
 def board_choices():
     """``[(key, display name)]`` of every board a medic can take as its own
@@ -111,6 +125,7 @@ def board_from_usb(vendor: str, product: str):
     if "n5262" in pr or "t114" in pr:
         return "heltec_t114_gps"
     if "espressif" in v or "jtag" in pr:
+        # a V2 presents exactly the same; the picker shows both (look_alikes)
         return "heltec_wireless_tracker"
     return None
 

@@ -75,6 +75,7 @@ _BY_KEY = {
     "heltec32_v3": "Heltec V3",
     "heltec32_v2": "Heltec V2",
     "heltec_wireless_tracker": "Wireless Tracker",
+    "heltec_wireless_tracker_v2": "Wireless Tracker",
     "tbeam": "LilyGO T-Beam v1.1",
     "tbeam_supreme": "LilyGO T-Beam Supreme",
     "t3s3": "T3S3",

@@ -18,6 +18,7 @@ Date = the commit that introduced the file (`git log --diff-filter=A --format=%a
 | heltec_v3.png | operator-supplied illustration/render | 2026-07-24 | MIT |
 | heltec_v4.png | operator-supplied illustration/render | 2026-07-24 | MIT |
 | heltec_wireless_tracker.png | operator-supplied illustration/render | 2026-08-01 | MIT |
+| heltec_wireless_tracker_v2.png | operator-supplied illustration/render | 2026-10-20 | MIT |
 | lora32_v21.png | operator-supplied illustration/render | 2026-08-01 | MIT |
 | pi_3a_plus.png | operator-supplied photo | 2026-08-02 | MIT |
 | pi_4b.png | operator-supplied photo | 2026-08-02 | MIT |

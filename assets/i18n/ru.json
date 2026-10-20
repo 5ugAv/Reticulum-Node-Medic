@@ -1034,6 +1034,7 @@
   "Reachable — its other mesh address answered{where}, but the address its health beacons come from did not, so no health was requested. The node is up; its health reporter may be quiet, or that address is not announced where the medic can hear it.": "Доступен — его другой mesh-адрес ответил{where}, но адрес, с которого приходят его маячки состояния, не ответил, поэтому состояние не запрашивалось. Узел работает; его отчёты о состоянии могут молчать, или этот адрес не объявляется там, где medic его слышит.",
   "Reached the port but couldn't read the chip — hold BOOT, tap RST, release BOOT, then Detect again (S3 boards need download mode).": "Порт доступен, но чип прочитать не удалось — удерживайте BOOT, нажмите RST, отпустите BOOT, затем снова «Определить» (платам S3 нужен режим загрузки).",
   "Read it off the paper, not the screen — that is what proves you can do it later.": "Читайте с бумаги, а не с экрана — именно это доказывает, что вы сможете сделать это потом.",
+  "Read the board's label: Rev. 2.0 is the V2.": "Прочитайте надпись на плате: Rev. 2.0 — это V2.",
   "Reading GPS…": "Чтение GPS…",
   "Reading identity, writing certificate, enrolling as kin…": "Чтение личности, запись сертификата, регистрация как kin…",
   "Reading the board…": "Чтение платы…",

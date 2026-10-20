@@ -58,7 +58,10 @@ def test_flash_targets_the_work_port_and_never_jonesey():
     for c in esptool_cmds:
         assert WORK_PORT in c
         assert JONESEY_PORT not in c
-        assert TRACKER_BUILD_DIR in c            # the PROVEN fork build tree
+        # the PROVEN fork build tree — or, when the image exists on the host
+        # (always on a medic; on a dev machine only after a local build),
+        # the app pieces the robust flasher cuts from that same image.
+        assert TRACKER_BUILD_DIR in c or "/tmp/nm-part-" in c
         assert "--no-stub" in c and "115200" in c  # USB-JTAG constraints
     # Jonesey's port appears in NO command of the entire run
     assert not [c for c in cmds if JONESEY_PORT in c]

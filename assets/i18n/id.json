@@ -1034,6 +1034,7 @@
   "Reachable — its other mesh address answered{where}, but the address its health beacons come from did not, so no health was requested. The node is up; its health reporter may be quiet, or that address is not announced where the medic can hear it.": "Terjangkau — alamat mesh-nya yang lain menjawab{where}, tetapi alamat asal suar kesehatannya tidak, jadi kondisi tidak diminta. Node menyala; pelapor kesehatannya mungkin diam, atau alamat itu tidak diumumkan di tempat medic bisa mendengarnya.",
   "Reached the port but couldn't read the chip — hold BOOT, tap RST, release BOOT, then Detect again (S3 boards need download mode).": "Port tercapai tetapi chip tidak terbaca — tahan BOOT, tekan RST, lepas BOOT, lalu Deteksi lagi (papan S3 memerlukan mode download).",
   "Read it off the paper, not the screen — that is what proves you can do it later.": "Bacalah dari kertas, bukan dari layar — itulah yang membuktikan Anda bisa melakukannya nanti.",
+  "Read the board's label: Rev. 2.0 is the V2.": "Baca label pada papan: Rev. 2.0 adalah V2.",
   "Reading GPS…": "Membaca GPS…",
   "Reading identity, writing certificate, enrolling as kin…": "Membaca identitas, menulis sertifikat, mendaftarkan sebagai kin…",
   "Reading the board…": "Membaca papan…",

@@ -1034,6 +1034,7 @@
   "Reachable — its other mesh address answered{where}, but the address its health beacons come from did not, so no health was requested. The node is up; its health reporter may be quiet, or that address is not announced where the medic can hear it.": "Erreichbar — seine andere Mesh-Adresse hat geantwortet{where}, aber die Adresse, von der seine Zustandsmeldungen kommen, nicht, also wurde kein Zustand angefragt. Der Knoten ist an; sein Zustandsmelder schweigt vielleicht, oder diese Adresse wird nicht dort angekündigt, wo der Medic sie hören kann.",
   "Reached the port but couldn't read the chip — hold BOOT, tap RST, release BOOT, then Detect again (S3 boards need download mode).": "Port erreicht, aber der Chip ließ sich nicht lesen — BOOT halten, RST tippen, BOOT loslassen, dann erneut Erkennen (S3-Boards brauchen den Download-Modus).",
   "Read it off the paper, not the screen — that is what proves you can do it later.": "Lies ihn vom Papier ab, nicht vom Bildschirm — das beweist, dass du es später kannst.",
+  "Read the board's label: Rev. 2.0 is the V2.": "Lies das Etikett auf der Platine: Rev. 2.0 ist die V2.",
   "Reading GPS…": "GPS wird gelesen…",
   "Reading identity, writing certificate, enrolling as kin…": "Identität lesen, Urkunde schreiben, als Kin registrieren…",
   "Reading the board…": "Platine wird gelesen…",

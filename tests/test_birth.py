@@ -39,4 +39,5 @@ def test_rnode_choices_official_first_custom_last():
     methods = [b.flash_method for b in boards]
     assert methods[0] == "autoinstall"
     assert methods[-1] == "arduino_cli"
-    assert boards[-1].key == "heltec_wireless_tracker"
+    # customs sort by display name, so the V2 Tracker now closes the list
+    assert boards[-1].key == "heltec_wireless_tracker_v2"

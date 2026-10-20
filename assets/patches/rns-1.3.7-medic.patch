@@ -1,6 +1,6 @@
 diff -ru -x _ pypi/RNS/Interfaces/RNodeInterface.py nm1/RNS/Interfaces/RNodeInterface.py
 --- pypi/RNS/Interfaces/RNodeInterface.py	2026-05-14 22:58:38
-+++ nm1/RNS/Interfaces/RNodeInterface.py	2026-09-08 17:29:34
++++ nm1/RNS/Interfaces/RNodeInterface.py	2026-10-20 15:07:35
 @@ -441,8 +441,19 @@
              while not self.detected and time.time() < detect_time + ble_detect_timeout: time.sleep(0.1)
              if not self.detected: RNS.log(f"RNode detect timed out over BLE", RNS.LOG_ERROR)
@@ -25,18 +25,19 @@ diff -ru -x _ pypi/RNS/Interfaces/RNodeInterface.py nm1/RNS/Interfaces/RNodeInte
              self.serial.close()
 diff -ru -x _ pypi/RNS/Utilities/rnodeconf.py nm1/RNS/Utilities/rnodeconf.py
 --- pypi/RNS/Utilities/rnodeconf.py	2025-12-22 17:56:54
-+++ nm1/RNS/Utilities/rnodeconf.py	2026-09-08 15:12:48
-@@ -183,6 +183,9 @@
++++ nm1/RNS/Utilities/rnodeconf.py	2026-10-20 15:08:26
+@@ -183,6 +183,10 @@
      MODEL_C5            = 0xC5
      MODEL_CA            = 0xCA
  
 +    PRODUCT_HELTEC_WIRELESS_TRACKER = 0xCB
 +    BOARD_HELTEC_WIRELESS_TRACKER   = 0x52
++    BOARD_HELTEC_WIRELESS_TRACKER_V2 = 0x53  # Rev 2.0: KCT8103L PA/LNA, 28 dBm
 +
      PRODUCT_H32_V4      = 0xC3
      MODEL_C8            = 0xC8 # 868/915/923 MHz with PA
  
-@@ -288,11 +291,14 @@
+@@ -288,11 +292,14 @@
      ROM.PRODUCT_H32_V2: "Heltec LoRa32 v2",
      ROM.PRODUCT_H32_V3: "Heltec LoRa32 v3",
      ROM.PRODUCT_H32_V4: "Heltec LoRa32 v4",
@@ -51,15 +52,14 @@ diff -ru -x _ pypi/RNS/Utilities/rnodeconf.py nm1/RNS/Utilities/rnodeconf.py
  }
  
  platforms = {
-@@ -335,6 +341,9 @@
+@@ -335,6 +342,10 @@
      0xC8: [860000000, 930000000, 28, "850 - 950 MHz", "rnode_firmware_heltec32v4pa.zip", "SX1262"],
      0xC6: [420000000, 520000000, 22, "420 - 520 MHz", "rnode_firmware_heltec_t114.zip", "SX1268"],
      0xC7: [850000000, 950000000, 22, "850 - 950 MHz", "rnode_firmware_heltec_t114.zip", "SX1262"],
 +    0xCD: [470000000, 510000000, 22, "470 - 510 MHz", "rnode_firmware_heltec_meshpocket.zip", "SX1262"],
 +    0xCE: [863000000, 928000000, 22, "863 - 928 MHz", "rnode_firmware_heltec_meshpocket.zip", "SX1262"],
 +    0xCF: [863000000, 928000000, 22, "863 - 928 MHz", "rnode_firmware_eora_s3.zip", "SX1262"],
++    0xCC: [863000000, 928000000, 28, "863 - 928 MHz", "rnode_firmware_heltec_wireless_tracker_v2.zip", "SX1262"],
      0xE4: [420000000, 520000000, 17, "420 - 520 MHz", "rnode_firmware_tbeam.zip", "SX1278"],
      0xE9: [850000000, 950000000, 17, "850 - 950 MHz", "rnode_firmware_tbeam.zip", "SX1276"],
      0xD4: [420000000, 520000000, 22, "420 - 520 MHz", "rnode_firmware_tdeck.zip", "SX1268"],
-Only in nm1/RNS/Utilities: rnodeconf.py.bak
-Only in nm1/RNS/Utilities: rnodeconf.py.prepatch.bak

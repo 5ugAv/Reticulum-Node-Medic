@@ -302,6 +302,7 @@ _USB_KIND = {
     "heltec32_v3": "bridge",
     "heltec32_v4": "native",
     "heltec_wireless_tracker": "native",
+    "heltec_wireless_tracker_v2": "native",
     "xiao_esp32s3": "native",
     "tdeck": "native",
     "tbeam_supreme": "native",
@@ -431,6 +432,10 @@ _NRF52_FAMILY_KEYS = (
 #: the HT-n5262 ambiguity outright, for re-flashes and adoptions.
 _RNODE_BOARD_BYTE = {
     0x3C: "heltec_t114",
+    # The two Trackers are one board to the USB bus; this byte is the only
+    # thing that says which image a flashed one carries.
+    0x52: "heltec_wireless_tracker",
+    0x53: "heltec_wireless_tracker_v2",
     0x46: "heltec_meshpocket",
     0x51: "rak4631",
     0x44: "techo",

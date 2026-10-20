@@ -246,7 +246,19 @@ class FirstbornScreen(BoxLayout):
             btn.add_widget(inner)
             btn.bind(on_release=lambda *_a, k=key: self._choose(k))
             row.add_widget(btn)
-        return row
+        if not ff.look_alikes(self._board_key):
+            return row
+        # Two of the pictures are one board to the medic's USB (the V1 and V2
+        # Trackers); only the label on the board itself settles it.
+        box = BoxLayout(orientation="vertical", size_hint_y=None,
+                        height=dp(132 + 22), spacing=dp(2))
+        box.add_widget(row)
+        box.add_widget(Label(
+            text=tr("Read the board's label: Rev. 2.0 is the V2."),
+            font_size=theme.font_sp("12sp"), size_hint_y=None, height=dp(20),
+            halign="center",
+            color=theme.hex_to_rgba(theme.COLORS["text_secondary"])))
+        return box
 
     def _render(self, force=False):
         view = self._view()

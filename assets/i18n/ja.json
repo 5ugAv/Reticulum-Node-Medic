@@ -1034,6 +1034,7 @@
   "Reachable — its other mesh address answered{where}, but the address its health beacons come from did not, so no health was requested. The node is up; its health reporter may be quiet, or that address is not announced where the medic can hear it.": "到達可能 — もう一方のメッシュアドレスは応答しました{where}が、状態ビーコンの送信元アドレスは応答しなかったため、状態は要求していません。ノードは稼働中です。状態レポーターが沈黙しているか、そのアドレスがメディックの聞こえる範囲でアナウンスされていないのかもしれません。",
   "Reached the port but couldn't read the chip — hold BOOT, tap RST, release BOOT, then Detect again (S3 boards need download mode).": "ポートには到達しましたがチップを読めませんでした — BOOT を押したまま RST を押して放し、BOOT を放してから、もう一度「検出」してください（S3 ボードはダウンロードモードが必要です）。",
   "Read it off the paper, not the screen — that is what proves you can do it later.": "画面ではなく紙から読み取ってください — それが、あとで同じことができる証明になります。",
+  "Read the board's label: Rev. 2.0 is the V2.": "基板のラベルを確認してください。Rev. 2.0 が V2 です。",
   "Reading GPS…": "GPS を読み取っています…",
   "Reading identity, writing certificate, enrolling as kin…": "識別情報を読み取り、証明書を書き込み、kin として登録中…",
   "Reading the board…": "ボードを読み取り中…",

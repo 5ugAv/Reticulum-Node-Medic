@@ -75,6 +75,11 @@ BOARDS: Dict[str, dict] = {
                        has_screen=False),
     "heltec_wireless_tracker": _b("heltec_wireless_tracker",
                                   "Heltec Wireless Tracker"),
+    # Rev 2.0 render supplied by the keeper 2026-10-20. Same USB identity as
+    # the V1, so the picture (and the "Rev. 2.0" on its label) is what tells an
+    # operator which Tracker is in their hand.
+    "heltec_wireless_tracker_v2": _b("heltec_wireless_tracker_v2",
+                                     "Heltec Wireless Tracker V2"),
     # illustration supplied by the operator 2026-09-08, the day the board's
     # OLED came up. Its screen was blanked to the panel's own dark navy so the
     # node name lands on an empty display; the rect below is the glass, MEASURED

@@ -42,7 +42,9 @@ Wireless Tracker) — is on Cults 3D:
   GPS passthrough** (`docs/TRACKER_GNSS.md`, `monitor/serial_splitter.py`). It
   is set up from the screen (`workflows/medic_radio.py`): the medic writes the
   Tracker image onto it, finds it by its `/dev/serial/by-id` name and wires the
-  splitter, `rnsd` and `lxmd` around it.
+  splitter, `rnsd` and `lxmd` around it. A Wireless Tracker V2 (Rev 2.0, with
+  its 28 dBm amplifier) or a Heltec T114 with GPS can take that place instead;
+  the first-radio screen shows the pictures and the keeper picks.
 - **A USB SD-card reader.** Every Pi card the medic writes — node or clone —
   goes through its own reader: `provisioning/pi_imager.py` refuses any target
   that is not a present, removable USB disk.
@@ -162,7 +164,7 @@ The firmware sources (all published; `firmware_trees` in the manifest):
 | Folder | Repository | Branch @ commit | Built here into |
 |---|---|---|---|
 | `~/RNode_Firmware` | 5ugAv/RNode_Firmware | `medic-cross` @ 2da8bc3 | the Heltec V4 colour image |
-| `~/overlay_test/RNode_Firmware` | 5ugAv/RNode_Firmware | `jonesey` @ eb861d7 | the Heltec Wireless Tracker image |
+| `~/overlay_test/RNode_Firmware` | 5ugAv/RNode_Firmware | `jonesey` @ ae4a528 | the Heltec Wireless Tracker and Tracker V2 images |
 | `~/EoRa-S3/RNode_Firmware_CE` | 5ugAv/RNode_Firmware | `eora-s3` @ b574a82 | the Ebyte EoRa-S3 image |
 | `~/MeshPocket/RNode_Firmware_CE` | 5ugAv/HELTEC-MeshPocket-RNode | `main` @ 2a4fb1f | the Heltec MeshPocket and T114-with-GPS DFU packages |
 | `~/RTNode-2400` | 5ugAv/RTNode-2400 | `techo-support` @ 3a09717 | RTNode-2400-NM for T-Echo, RAK4631, T114 |

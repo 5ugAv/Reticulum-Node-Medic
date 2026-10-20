@@ -55,6 +55,9 @@ BOARD_POWER: Dict[str, dict] = {
                         "note": "ESP32-S3 WiFi + SX1262 TX at 22 dBm, OLED"},
     "heltec_wireless_tracker": {"peak_ma": 450, "src": "estimate",
                                 "note": "SX1262 TX + GNSS + TFT concurrently"},
+    "heltec_wireless_tracker_v2": {"peak_ma": 900, "src": "estimate",
+                                   "note": "28 dBm KCT8103L PA (the V4's measured "
+                                           "class) + GNSS + TFT concurrently"},
     # NOT a bare board: a 10000 mAh powerbank with the node inside it. The node
     # section is small (nRF52 + SX1262 + e-ink, in the T114's class at ~160 mA),
     # but plugging it in starts CHARGING the pack, and that draw dominates and
@@ -141,6 +144,7 @@ _BOARD_NAMES = {"lora32_v21": "LilyGO LoRa32 v2.1", "lora32_v20": "LilyGO LoRa32
                 "heltec_t114_gps": "Heltec T114 with GPS",
                 "xiao_esp32s3": "Seeed XIAO ESP32S3",
                 "heltec_wireless_tracker": "Heltec Wireless Tracker",
+                "heltec_wireless_tracker_v2": "Heltec Wireless Tracker V2",
                 "eora_s3": "Ebyte EoRa-S3",
                 "heltec_meshpocket": "Heltec MeshPocket"}
 
@@ -226,6 +230,7 @@ _BOARD_SHORT = {
     "heltec32_v4": "Heltec V4", "heltec_t114": "Heltec T114",
     "heltec_t114_gps": "Heltec T114 with GPS",
     "heltec_wireless_tracker": "Heltec Tracker",
+    "heltec_wireless_tracker_v2": "Heltec Tracker V2",
     "eora_s3": "EoRa-S3",
     "lora32_v21": "LoRa32 v2.1", "lora32_v20": "LoRa32 v2.0",
     "lora32_v10": "LoRa32 v1.0", "t3s3": "T3-S3", "tbeam": "T-Beam",

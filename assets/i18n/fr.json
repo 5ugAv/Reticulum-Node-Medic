@@ -1034,6 +1034,7 @@
   "Reachable — its other mesh address answered{where}, but the address its health beacons come from did not, so no health was requested. The node is up; its health reporter may be quiet, or that address is not announced where the medic can hear it.": "Joignable — son autre adresse de maillage a répondu{where}, mais pas celle d'où viennent ses balises d'état, aucun état n'a donc été demandé. Le nœud est en marche ; son rapporteur d'état est peut-être silencieux, ou cette adresse n'est pas annoncée là où le medic peut l'entendre.",
   "Reached the port but couldn't read the chip — hold BOOT, tap RST, release BOOT, then Detect again (S3 boards need download mode).": "Port atteint mais impossible de lire la puce — maintenez BOOT, appuyez sur RST, relâchez BOOT, puis relancez Détecter (les cartes S3 ont besoin du mode téléchargement).",
   "Read it off the paper, not the screen — that is what proves you can do it later.": "Lisez-la sur le papier, pas sur l'écran — c'est ce qui prouve que vous pourrez le refaire plus tard.",
+  "Read the board's label: Rev. 2.0 is the V2.": "Lisez l'étiquette de la carte : Rev. 2.0 est la V2.",
   "Reading GPS…": "Lecture du GPS…",
   "Reading identity, writing certificate, enrolling as kin…": "Lecture de l'identité, écriture du certificat, enregistrement comme Kin…",
   "Reading the board…": "Lecture de la carte…",
