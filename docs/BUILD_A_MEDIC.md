@@ -53,8 +53,9 @@ below).
   Not a 3 A one: on this bench a 3 A supply browned out a medic and took a USB
   controller with it, and the setup turns on full USB current for the radio
 * [ ] **Heltec Wireless Tracker** — the 902–928 MHz variant for Australia,
-  New Zealand and the Americas (863–870 MHz for Europe). The V1.1 board; the
-  Rev 2.0 (V2) is supported from the next release. In its box: the board, a
+  New Zealand and the Americas (863–870 MHz for Europe). The V1.1 board is
+  the proven one; the Rev 2.0 (V2) is in the catalogue but has not yet been
+  flashed on a bench. In its box: the board, a
   LoRa antenna, a battery lead, pin headers. Its built-in ceramic GNSS antenna
   is all the medic needs
 * [ ] **A short USB-A to USB-C cable** — a data cable, not a charge-only one
@@ -147,7 +148,7 @@ writes later, for nodes and clones; the setup downloads it for you.)
 
 - Card in, power on. The login prompt appears on the touchscreen; log in there
   with the keyboard, or from your computer: `ssh <user>@<hostname>.local`.
-- Install git and tmux (Lite has neither):
+- Install git and tmux:
   `sudo apt update && sudo apt install -y git tmux`
 - Get Node Medic, at the path it reads:
   `git clone https://github.com/5ugAv/Reticulum-Node-Medic.git ~/reticulum-tool`
@@ -191,7 +192,7 @@ The tour's first page sets up the medic's own radio and position finder:
 ## After the walkthrough
 
 - MAPS ▸ *Download offline map* over the area your nodes will be in. The
-  setup only started the world overview (zoom 0–8, about 87,000 tiles), which
+  setup only started the world overview (zoom 0–8, about 87,000 tiles, 1.3 GB), which
   keeps filling in the background while the medic is online; the detail of
   your own area is your choice.
 - Settings ▸ *Field readiness* says what the medic still lacks for the field.

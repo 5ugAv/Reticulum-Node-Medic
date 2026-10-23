@@ -166,16 +166,14 @@ Counted from the code on 2026-10-04 (commands under *Counts* below):
   [`workflows/updater.py`](workflows/updater.py)); a newer upstream release is
   reported by Field readiness, never fetched.
 
-Caveat, stated plainly: the three built-here boards and all eight RTNode-2400
-boards build from firmware folders kept in a medic's home directory, not in
-this repository. Those folders are published, and pinned by commit in
-[`assets/medic_manifest.json`](assets/medic_manifest.json). A medic cloned from
-one that has them carries every one of them. A medic set up from this
-repository gets them from `scripts/setup_medic.py`, which fetches each at its
-pinned commit, builds the Tracker, EoRa-S3, MeshPocket and Heltec V4 colour
-images BUILD flashes, and compiles RTNode-2400 once on each toolchain
-([`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)); its status is at the top of
-this file.
+The three built-here boards and all eight RTNode-2400 boards build from
+firmware folders in the medic's home directory, not in this repository. Nothing
+is fetched by hand: `scripts/setup_medic.py` clones each folder at the commit
+pinned in [`assets/medic_manifest.json`](assets/medic_manifest.json), builds
+the Tracker, EoRa-S3, MeshPocket and Heltec V4 colour images BUILD flashes,
+and compiles RTNode-2400 once on each toolchain, as steps of the setup
+([`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)); a clone receives the same
+folders from its parent. Its status is at the top of this file.
 
 ## Deployment defaults (all overridable)
 
