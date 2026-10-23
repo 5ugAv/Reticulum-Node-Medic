@@ -53,8 +53,9 @@ class GnssCheck(DiagnosticCheck):
         issues: List[Optional[Issue]] = []
         issues.append(self._check(
             "gnss_data_flowing", flowing,
-            "The Tracker isn't reporting any GPS data. Check it's plugged in, the "
-            "GPS antenna is on the GNSS socket, and the GPS service is running — "
+            "The Tracker isn't reporting any GPS data. Check it's plugged in, its "
+            "white ceramic GPS antenna can see the sky (nothing goes on the GNSS "
+            "socket unless the board was modified), and the GPS service is running — "
             "the GNSS shares its GPIO3 power with the display. No location is "
             "available right now.",
             severity="warning",

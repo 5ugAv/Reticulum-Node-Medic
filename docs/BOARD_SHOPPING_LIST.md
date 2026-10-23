@@ -1,5 +1,8 @@
 # LoRa board shopping list — grouped by seller
 
+This is the list for the LoRa **nodes** a medic builds. The parts for the
+**medic itself** are in [`BUILD_A_MEDIC.md` ▸ Parts list](BUILD_A_MEDIC.md#parts-list--one-medic).
+
 Prices checked 2026-08-31, USD unless marked AUD. Grouped so you pay postage
 once per store. Every link was fetched, not guessed.
 

@@ -250,11 +250,10 @@ class MitosisScreen(BoxLayout):
         # The FULL build list (operator, 2026-08-30: "give them the full
         # list of the build... spell it all out") — everything a person
         # needs to make a complete working medic, not just the imaging
-        # parts. The Tracker is the new medic's GPS and clock (its
-        # firstborn). It is NOT its mesh radio: the firstborn flashes the
-        # GPS-only passthrough, and this flow sets up no radio for the clone
-        # — said plainly since 2026-10-05 (readiness ledger #120); the
-        # Tracker-as-RNode build for a clone is a bench job still to come.
+        # parts. The Tracker is the new medic's own LoRa radio AND its GPS and
+        # clock: the walkthrough's first page flashes the Tracker RNode image and
+        # wires rnsd/lxmd around it (workflows/medic_radio.py), as on Node Medic 2
+        # since 2026-10. This flow itself sets up no radio for the clone.
         body = _label(tr(
             "This copies this Node Medic onto a second one. Before you start, "
             "have these to hand:\n\n"

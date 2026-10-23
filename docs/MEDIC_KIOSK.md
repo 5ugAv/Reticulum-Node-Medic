@@ -1,5 +1,10 @@
 # The medic as a kiosk — on-device settings outside this repo
 
+> **Node Medic 1 only.** This file describes the first medic's desktop
+> arrangement (labwc). A medic built from [`BUILD_A_MEDIC.md`](BUILD_A_MEDIC.md),
+> and every clone, runs the `cage` kiosk unit instead; its recovery is the
+> kiosk-unit restart in `README.md` ▸ *If something goes wrong*.
+
 Node Medic runs fullscreen over the Raspberry Pi OS desktop (labwc). Some
 desktop pieces can draw OVER the app. This file records what has been
 changed on a medic's own configuration, why, and how to undo it, because

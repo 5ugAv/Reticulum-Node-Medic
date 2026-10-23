@@ -28,6 +28,8 @@ from workflows.medic_setup import run_setup  # noqa: E402
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Set up this Raspberry Pi 5 as a Node Medic from GitHub alone.")
+    parser.formatter_class = argparse.RawDescriptionHelpFormatter
+    parser.epilog = __doc__          # the prerequisites reach the terminal, not only the file
     parser.add_argument("--check", action="store_true",
                         help="only report what is still missing; change nothing")
     parser.add_argument("--reboot", action="store_true",

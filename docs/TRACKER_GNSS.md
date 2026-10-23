@@ -1,5 +1,13 @@
 # JONESEY — the medic's Heltec Wireless Tracker (RNode + GPS)
 
+> **If you are building a medic:** the GPS antenna is the white ceramic square
+> on the board. It works as shipped — buy nothing, and mount the board so that
+> square faces the sky. The 915 MHz LoRa antenna goes on the socket marked
+> **LoRa**. Everything below about an external GNSS antenna is an optional,
+> advanced modification (moving a 1 mm 0 Ω link: microsoldering) that Jonesey,
+> the first medic's own board, has had; a medic built from the parts list in
+> [`BUILD_A_MEDIC.md`](BUILD_A_MEDIC.md) does not need it.
+
 The Node Medic's dedicated RNode is a **Heltec Wireless Tracker** named
 **JONESEY**. It is the medic's OWN hardware, permanently attached — never a work
 board, never a flash target for ordinary jobs. `assert_flashable()` exists
@@ -95,7 +103,7 @@ GPS. There is nothing to plug in, and no antenna purchase will change it.
 Taped inside the medic's housing, the patch saw **nothing** — not a weak fix, no
 fix. Metal or a board above it is the same as no sky.
 
-### Upgrading to the external antenna
+### Optional, advanced: an external GNSS antenna (microsoldering)
 
 **The operator has a good-quality dual-band GNSS antenna intended for JONESEY.**
 It is the right part; the board is simply not wired to it yet. Using it requires

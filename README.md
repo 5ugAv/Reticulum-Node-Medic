@@ -10,6 +10,27 @@ keeper has a medic too. It reaches nodes over USB serial, SSH, a cable link
 (USB gadget to a Pi node, ethernet to another medic), or by running commands on
 the medic itself.
 
+**Build your own medic.** A Raspberry Pi 5 with a touchscreen, a Heltec
+Wireless Tracker as its radio and GPS, and a USB card reader. The parts list,
+with what each part is for, and the whole path are in
+[`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md). The short form:
+
+1. Write **Raspberry Pi OS Lite (64-bit)** to the card with Raspberry Pi Imager
+   (a hostname, a user and password, your Wi-Fi and country, time zone, SSH).
+2. Fit the cooler and the display, card in, power on, log in — on a keyboard,
+   or `ssh <user>@<hostname>.local`.
+3. `sudo apt update && sudo apt install -y git`, then
+   `git clone https://github.com/5ugAv/Reticulum-Node-Medic.git ~/reticulum-tool`
+4. `python3 ~/reticulum-tool/scripts/setup_medic.py` — one line per step, one
+   to two hours; it ends with `Node Medic is set up.` If it stops, run it
+   again.
+5. `sudo reboot`. The medic starts on its screen, and its first page sets up
+   its own radio.
+
+Status: proven end to end in a virtual machine shaped like a fresh Pi 5 card
+(2026-10-09); no run on a real Pi 5 has been reported yet — if you do one,
+open an issue with `~/medic_setup.log`.
+
 It is designed to work with no internet in the field — carry, don't fetch.
 Firmware, Python wheels, Debian packages, Reticulum config templates, board
 photographs and map tiles are all carried on disk. What has to be fetched while
@@ -22,15 +43,10 @@ receives all three from its parent: the OS image and the toolchain always, and
 the map with street-level detail when the clone stays in the parent's fleet (a
 clone made for a new community gets the overview and downloads its own area).
 A medic set up from this repository with `scripts/setup_medic.py` gets the
-pinned OS image, the whole toolchain and the world-overview map from that
-script, a route not yet run end-to-end on a Pi 5. On a medic built entirely by
+pinned OS image and the whole toolchain from that script, which also starts
+the world-overview map (its status is above). On a medic built entirely by
 hand, the first RTNode build done with Wi-Fi on fetches the toolchain. Either
 way, the detailed map of your own area is yours to choose.
-
-**Build one yourself:** the 3D-printed case, its parts list and the assembly
-steps are on Cults 3D —
-[Node Medic case](https://cults3d.com/en/3d-model/gadget/node-medic-case). The
-software side is [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md).
 
 > This is the **tool**. It is kept separate from the node firmware (RNode, and
 > the RTNode-2400 fork the medic builds as **RTNode-2400-NM**) that it inspects
@@ -100,8 +116,9 @@ Two things deliberately have no card:
   BUILD's guided walkthrough. (The screen and workflow keep the code name
   `mitosis`.)
 
-The first time a medic is powered on it opens a **setup walkthrough** — the
-security choices, then a tour that opens each mode by its painted word — and
+The first time a medic is powered on it opens a **setup walkthrough** — a short
+tour that opens each mode by its painted word (its lock-your-records half is
+switched off in v1; records are locked from Settings ▸ Encrypt my records) — and
 goes to the front page when that is finished. Settings can run it again for the
 next keeper. As of 2026-10-04, `ui/app.py` registers **33 screens** in total
 (node detail, certificate view, Settings and its sub-pages, notifications, the
@@ -157,8 +174,8 @@ one that has them carries every one of them. A medic set up from this
 repository gets them from `scripts/setup_medic.py`, which fetches each at its
 pinned commit, builds the Tracker, EoRa-S3, MeshPocket and Heltec V4 colour
 images BUILD flashes, and compiles RTNode-2400 once on each toolchain
-([`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)). That script was written and
-tested off the Pi on 2026-10-08; it has not yet been run end-to-end on a Pi 5.
+([`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md)); its status is at the top of
+this file.
 
 ## Deployment defaults (all overridable)
 
@@ -393,12 +410,12 @@ board cores and libraries, the firmware sources at their pinned commits and the
 images built from them, PlatformIO, the OS image, the field caches and the
 world map. One line per step; run it again after any failure and it carries
 on; `--check` only reports what is missing. Then reboot, and set up the
-medic's own radio (its Heltec Wireless Tracker) on the first page of the
-walkthrough's tour. Security hardening (scoped sudo, key-only SSH, the
-firewall) stays a separate step by hand
-([`provisioning/security/README.md`](provisioning/security/README.md)). The
-script has not yet been run end-to-end on a Pi 5 — the Known gaps in that file
-say what was checked instead.
+medic's own radio (a Heltec Wireless Tracker, or a T114 with its GPS module)
+on the first page of the walkthrough's tour. Security hardening (scoped sudo,
+key-only SSH, the firewall) stays a separate step by hand, with
+`--user <your user>` ([`provisioning/security/README.md`](provisioning/security/README.md)).
+The route's status is at the top of this file; the guide's appendix says what
+was checked and what only a real Pi 5 can prove.
 
 ## If something goes wrong
 
@@ -412,20 +429,18 @@ say what was checked instead.
   wrong, power the medic off, wait ten seconds, and power back on. The same
   re-init works from SSH:
   `cd ~/reticulum-tool && python3 -c "from provisioning import screen_fix; print(screen_fix.reinit_panel())"`.
-- **The app has died** (wallpaper and no menu bar — the desktop panel is
-  removed on a kiosk medic, see [`docs/MEDIC_KIOSK.md`](docs/MEDIC_KIOSK.md)):
-  from another machine,
-  `ssh nodemedic@<medic-hostname>.local 'cd ~/reticulum-tool && bash scripts/restart_ui.sh'`.
-  The script **refuses** (exit 3) while the medic is writing hardware — an SD
-  image write, a board flash, an `rnodeconf` run, an nRF52 DFU, an arduino-cli
-  upload — or while the UI's own busy marker is fresh (a birth over SSH, a
-  download, a self-check); wait, or re-run with `FORCE=1` only when the running
-  instance is the thing that is broken. `STOP_ONLY=1` stops without restarting.
-  That script was written for Node Medic 1's desktop session. A medic that
-  boots through the `cage` kiosk unit (every clone, and every medic set up with
-  `scripts/setup_medic.py`) is restarted through its unit, after the same busy
-  check:
-  `cd ~/reticulum-tool && bash scripts/ui_busy_guard.sh && sudo systemctl restart reticulum-node-medic`.
+- **The app has died** (a black screen, or wallpaper with nothing on it): from
+  another machine,
+  `ssh <user>@<hostname>.local 'cd ~/reticulum-tool && bash scripts/ui_busy_guard.sh && sudo systemctl restart reticulum-node-medic'`
+  — the kiosk unit, which is how every clone and every medic set up with
+  `scripts/setup_medic.py` boots. The guard **refuses** while the medic is
+  writing hardware — an SD image write, a board flash, an `rnodeconf` run, an
+  nRF52 DFU, an arduino-cli upload — or while the UI's own busy marker is
+  fresh (a birth over SSH, a download, a self-check); wait. Node Medic 1
+  alone runs the older desktop session ([`docs/MEDIC_KIOSK.md`](docs/MEDIC_KIOSK.md));
+  there it is `bash scripts/restart_ui.sh`, with the same refusals (exit 3),
+  `FORCE=1` only when the running instance is the thing that is broken, and
+  `STOP_ONLY=1` to stop without restarting.
 - **Read the logs**: `~/ui.log` (every launch road appends here, unbuffered)
   and `~/ui_crash.log` (`faulthandler` output for native crashes in Kivy / SDL /
   GL / serial code, which otherwise leave no traceback).
@@ -444,14 +459,15 @@ say what was checked instead.
   ([`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md) ▸ *Updating a medic*).
 - **From a laptop**, when the medic's checkout is not what runs: copy exactly
   the tracked files and nothing else, e.g.
-  `cd <repo> && rsync -a --files-from=<(git ls-files) . nodemedic@<medic-hostname>.local:~/reticulum-tool/`,
+  `cd <repo> && rsync -a --files-from=<(git ls-files) . <user>@<hostname>.local:~/reticulum-tool/`,
   then restart as above. A partial sync has taken the UI down before — sync all
   of `git ls-files`, never a subset. After an rsync, `git log` **on the medic**
   does not describe what is running; `git status --porcelain` there, or a grep
   for the code itself, does.
 - **The test gate**: `python3 -m pytest` before anything is deployed; the same
   suite runs on every push in GitHub Actions
-  ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), Python 3.11 and 3.12).
+  ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), Python 3.11 and 3.12;
+  the medic itself runs Raspberry Pi OS's Python 3.13).
 
 ## Architecture
 
@@ -577,7 +593,7 @@ and ticked as it is closed. The largest open items, summarised honestly:
 
 Start here if you are new:
 
-- [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md) — blank Pi 5 to running medic with `scripts/setup_medic.py` (pins in [`assets/medic_manifest.json`](assets/medic_manifest.json)), and the known gaps in that path.
+- [`docs/BUILD_A_MEDIC.md`](docs/BUILD_A_MEDIC.md) — build your own: the parts list, assembly, and the path from a blank Pi 5 to a running medic with `scripts/setup_medic.py` (pins in [`assets/medic_manifest.json`](assets/medic_manifest.json)), and the known gaps in that path.
 - [`docs/HANDOVER_NEXT_SESSION.md`](docs/HANDOVER_NEXT_SESSION.md) — read-this-first for whoever picks the project up: state, deploy and test mechanics, method.
 - [`docs/HANDOVER.md`](docs/HANDOVER.md) — the durable reference: architecture, the firmware contracts, the testing model.
 - [`docs/WORKING_METHOD.md`](docs/WORKING_METHOD.md) — the working rules that were paid for.
@@ -588,7 +604,7 @@ Start here if you are new:
 Using the medic:
 
 - [`docs/CHAT.md`](docs/CHAT.md) — the messenger and the propagation node.
-- [`docs/MEDIC_KIOSK.md`](docs/MEDIC_KIOSK.md) — the on-device desktop changes that make it a kiosk, and how to undo them.
+- [`docs/MEDIC_KIOSK.md`](docs/MEDIC_KIOSK.md) — Node Medic 1's desktop arrangement only (a medic built from the guide, and every clone, runs the `cage` kiosk unit instead).
 - [`docs/PHONE_APPS.md`](docs/PHONE_APPS.md) — getting a Reticulum messenger onto a phone.
 - [`docs/WHICH_NODE_TO_BUILD.md`](docs/WHICH_NODE_TO_BUILD.md), [`docs/CHEAPEST_NODE.md`](docs/CHEAPEST_NODE.md), [`docs/BOARD_SHOPPING_LIST.md`](docs/BOARD_SHOPPING_LIST.md) — choosing and buying hardware.
 - [`docs/BOARD_COVERAGE.md`](docs/BOARD_COVERAGE.md) — which boards have been proven, generated from the certificate ledger.

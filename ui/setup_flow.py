@@ -341,8 +341,10 @@ _TOUR_STEPS = [
              "it up writes Node Medic's radio software onto it, switches the "
              "medic's radio on, and checks it can hear other radios and the "
              "satellites.\n\n"
-             "Screw the aerial on first, then plug it in with its USB cable — "
-             "and plug in nothing else.",
+             "Push the 915 MHz aerial onto the socket marked LoRa first, then "
+             "plug the board in with its USB cable — and plug in nothing else. "
+             "Press nothing on the board. A Heltec T114 with its GPS module "
+             "can take the Tracker's place.",
      # One line: the body scrolls, a hint does not, and this step carries the
      # Tracker's picture too (readiness ledger #146).
      "hint": "No Tracker yet? You can do this later from Settings.",

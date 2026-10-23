@@ -1,4 +1,247 @@
-# Build a medic — from a blank Raspberry Pi 5 to a running Node Medic
+# Build your own Node Medic
+
+**Status.** The path on this page ran end to end on 2026-10-09 in a virtual
+machine shaped like a fresh Pi 5 card, in 19 minutes (the appendix says
+exactly what that proved and what it could not). No run on a real Raspberry
+Pi 5 has been reported yet; on one, expect one to two hours, most of it
+compiling. If you do the first, open an issue and attach `~/medic_setup.log`.
+
+A medic can also come from another medic: an existing one images a card and
+fills it over a cable (BUILD ▸ *Clone this device*). That needs a medic first;
+this page is for when there is none.
+
+## What you are building
+
+A Raspberry Pi 5 in a case, with a touchscreen, a small LoRa radio board that
+is also its GPS, and a USB card reader. On it runs Node Medic: it builds LoRa
+mesh nodes from bare boards, watches them over the air, diagnoses and repairs
+them, messages over the mesh, and can clone itself onto another Pi 5. Words
+this page uses:
+
+- **medic** — this device. **node** — a LoRa board (or a Pi with one) placed
+  in the field; the medic builds them.
+- **RNode** — the radio firmware a node runs; **RTNode-2400-NM** — the medic's
+  build of a standalone-node firmware. The medic carries both.
+- **birth** — building a node; **adopt** — enrolling one built elsewhere;
+  **kin** — the nodes this medic, or a medic it trusts, built.
+- **clone** — a copy of a medic made by a medic. **the reference medic** —
+  Node Medic 1, the first one, whose versions the setup installs.
+- **rnsd / lxmd** — Reticulum's network and messaging services, which the
+  medic runs once its radio is set up.
+- **the walkthrough** — the screens the medic opens the first time it starts.
+
+## Parts list — one medic
+
+Tick what you have. Sellers and prices vary by country; the band of the radio
+does not — pick the variant for where the medic will live (*Which band*,
+below).
+
+**The medic itself**
+
+* [ ] **Raspberry Pi 5**, 8 GB — every medic so far is built on one; the
+  software does not check the size, and no other size has been tried
+* [ ] **Raspberry Pi Active Cooler** — the case is designed around it, and the
+  setup's compile hour wants it
+* [ ] **Raspberry Pi Touch Display 2, 5-inch** (720 × 1280) — the size the
+  case is designed for and the one built with. In its box: the 22-to-15-way
+  ribbon a Pi 5 needs, the GPIO power lead, eight M2.5 screws. (The 7-inch has
+  the same resolution and the same touch over the same ribbon in Raspberry
+  Pi's documentation, but has not been tried.)
+* [ ] **microSD card, 64 GB** — the setup downloads and builds about 14 GB on
+  top of the OS; 32 GB is the practical minimum
+* [ ] **Power supply, 5 V / 5 A USB-C** — the official Raspberry Pi 27 W.
+  Not a 3 A one: on this bench a 3 A supply browned out a medic and took a USB
+  controller with it, and the setup turns on full USB current for the radio
+* [ ] **Heltec Wireless Tracker** — the 902–928 MHz variant for Australia,
+  New Zealand and the Americas (863–870 MHz for Europe). The V1.1 board; the
+  Rev 2.0 (V2) is supported from the next release. In its box: the board, a
+  LoRa antenna, a battery lead, pin headers. Its built-in ceramic GNSS antenna
+  is all the medic needs
+* [ ] **A short USB-A to USB-C cable** — a data cable, not a charge-only one
+  (a charge-only cable looks exactly like dead firmware). The Tracker lives
+  on one of the Pi's USB ports; in the printed case that is port 1
+* [ ] **A USB microSD card reader** — every node card and clone card the
+  medic writes goes through it (the software refuses any other target)
+
+**To set it up** (not part of the medic)
+
+* [ ] A computer with a card reader and **Raspberry Pi Imager**
+  (<https://www.raspberrypi.com/software/>), to write the medic's own card
+* [ ] A USB keyboard, or SSH from that computer
+* [ ] Internet for the setup, once (Wi-Fi or Ethernet); the finished medic
+  needs none
+
+**Optional**
+
+* [ ] **The 3D-printed case** — [Node Medic case on Cults 3D](https://cults3d.com/en/3d-model/gadget/node-medic-case),
+  designed around the parts above and the UPS below, with the assembly
+  photos
+* [ ] **Waveshare UPS Module 3S** and three 18650 cells — field power; the
+  battery gauge appears on the front page by itself when the module is there
+* [ ] **An Ethernet cable** — only for cloning a second medic over a cable
+* [ ] **A better 915 MHz antenna** than the one in the Tracker's box, with an
+  IPEX (U.FL) plug — the radio must never run without one
+* [ ] **An external GNSS antenna** — advanced: the Tracker's external GNSS
+  socket is not connected as shipped; using it means moving a 1 mm 0 Ω link
+  on the board, which is microsoldering. The ceramic antenna works as the
+  board comes ([`TRACKER_GNSS.md`](TRACKER_GNSS.md))
+
+Every LoRa node the medic builds needs its own board and antenna:
+[`BOARD_SHOPPING_LIST.md`](BOARD_SHOPPING_LIST.md).
+
+### Which band
+
+The medic's radio defaults are 915.125 MHz — Australia, New Zealand, the
+Americas. A European medic needs the 863–870 MHz Tracker and its defaults
+changed in Settings ▸ *Default radio parameters* before it builds any node.
+Only 915 MHz has been used in the field.
+
+## Before you start
+
+- A computer with a card reader and Raspberry Pi Imager (Windows, macOS or
+  Linux).
+- Internet for the whole setup. It downloads and builds about 14 GB on top of
+  the OS — the figure its own free-space checks allow for, not a measurement —
+  so not on a metered connection.
+- A USB keyboard, or SSH from that computer.
+- One to two hours.
+- Know that the setup changes the Pi's boot chip (the recovery boot order) and
+  system files (`config.txt`, services, udev, NetworkManager). `--check`
+  previews what is missing and changes nothing.
+
+## Assemble
+
+With the Pi unpowered:
+
+- Fit the Active Cooler.
+- Plug the display's ribbon into one of the Pi's two DISP connectors and its
+  power lead onto the GPIO header: the red lead on pin 2, the black on pin 6.
+  Both leads come in the display's box, and Raspberry Pi OS detects the
+  display with no settings.
+- Push the 915 MHz antenna's U.FL plug onto the Tracker's socket marked
+  **LoRa** — not the one marked GNSS. The radio must never be powered without
+  it. Leave the Tracker unplugged for now.
+- The card reader can go in at any time.
+- Optional: the case and the UPS; the Cults page has the assembly photos.
+  Wherever the Tracker ends up, its white ceramic square is its GPS antenna:
+  it should face the sky, with no metal over it.
+
+## Write the card
+
+On your computer, in Raspberry Pi Imager:
+
+- Device: Raspberry Pi 5. Operating system: under *Raspberry Pi OS (other)*,
+  **Raspberry Pi OS Lite (64-bit)**. Any current Lite release passes (Debian
+  13, "trixie"; an older "bookworm" card is refused).
+- Storage: the medic's card.
+- When Imager offers to customise the OS, set: a hostname, a user name and
+  password (this user gets the passwordless sudo the setup needs), your Wi-Fi
+  and its country, your time zone, and **enable SSH** if you will type over
+  the network.
+- Write it.
+
+(The 2026-06-18 Lite release the manifest pins is for the cards the medic
+writes later, for nodes and clones; the setup downloads it for you.)
+
+## First power-on and the setup
+
+- Card in, power on. The login prompt appears on the touchscreen; log in there
+  with the keyboard, or from your computer: `ssh <user>@<hostname>.local`.
+- Install git and tmux (Lite has neither):
+  `sudo apt update && sudo apt install -y git tmux`
+- Get Node Medic, at the path it reads:
+  `git clone https://github.com/5ugAv/Reticulum-Node-Medic.git ~/reticulum-tool`
+- Over SSH, start `tmux` first, so a dropped connection does not stop the run
+  (`tmux attach` picks it back up).
+- Run the setup:
+  `python3 ~/reticulum-tool/scripts/setup_medic.py`
+- Wait. It prints one line per step, 31 in all. A line can sit for up to an
+  hour with nothing after it while a firmware image compiles — leave it; the
+  log (`~/medic_setup.log`) fills in when each command ends. Success ends with
+  the line `Node Medic is set up.`
+- If it stops — a failed download, a power cut, a step marked `FAILED` — put
+  right what that line says and run the same command again. Finished steps
+  are skipped; downloads resume.
+  `python3 ~/reticulum-tool/scripts/setup_medic.py --check` lists what is
+  still missing and changes nothing.
+- `sudo reboot` (or start the setup with `--reboot` and it restarts by itself
+  once every step is done).
+
+## The walkthrough
+
+The medic starts on its own screen and, the first time, opens a short tour,
+one screen per mode (its lock-your-records half is switched off in this
+version; records are locked later from Settings ▸ *Encrypt my records*).
+
+The tour's first page sets up the medic's own radio and position finder:
+
+- Unplug everything else from the Pi's USB ports, except the keyboard.
+- Check the 915 MHz antenna is on the Tracker's LoRa socket, then plug the
+  Tracker in.
+- Tap the picture of your board: the Wireless Tracker, or a Heltec T114 with
+  its GPS module.
+- Press nothing on the board. Press *Set up its radio*.
+- The medic writes its radio software onto the board, records it as its own
+  radio (never flashed again by accident), wires its radio services around
+  it, restarts itself, and checks that the radio and the GPS answer. The GPS
+  needs sky: indoors it may report no fix yet.
+- *Skip for now* leaves it for Settings ▸ *This medic's radio and position
+  finder*.
+
+## After the walkthrough
+
+- MAPS ▸ *Download offline map* over the area your nodes will be in. The
+  setup only started the world overview (zoom 0–8, about 87,000 tiles), which
+  keeps filling in the background while the medic is online; the detail of
+  your own area is your choice.
+- Settings ▸ *Field readiness* says what the medic still lacks for the field.
+- Settings ▸ *Encrypt my records* locks its records.
+- Build your first node: [`WHICH_NODE_TO_BUILD.md`](WHICH_NODE_TO_BUILD.md).
+
+## Optional
+
+- **The UPS.** As on Node Medic 2: the Waveshare UPS Module 3S powers the Pi,
+  charges from its own 12.6 V 2 A supply, and reports its cells to the medic
+  over three wires (SDA, SCL and GND to the Pi's pins 3, 5 and 6). The
+  battery gauge appears on the front page by itself, and the medic shuts down
+  cleanly on an empty pack ([`MITOSIS_READINESS.md`](MITOSIS_READINESS.md)
+  has the details).
+- **An external GNSS antenna.** Not needed: the ceramic square works. The
+  Tracker's GNSS socket is not connected as shipped; using it means moving a
+  1 mm 0 Ω link on the board — microsoldering — after which an external
+  antenna is required, not optional ([`TRACKER_GNSS.md`](TRACKER_GNSS.md)).
+- **Lock it down**, once everything works. Put your computer's public key into
+  `~/.ssh/authorized_keys` on the medic first — key-only SSH locks out
+  everyone without one — then run the three scripts in
+  [`../provisioning/security/README.md`](../provisioning/security/README.md)
+  with `--user <your user>` (without it they assume `nodemedic`, the first
+  medic's account). Until then the user keeps Raspberry Pi OS's passwordless
+  sudo.
+
+## If something goes wrong
+
+- **A black screen, or wallpaper with nothing on it** (the app has died):
+  from your computer,
+  `ssh <user>@<hostname>.local 'cd ~/reticulum-tool && bash scripts/ui_busy_guard.sh && sudo systemctl restart reticulum-node-medic'`.
+  The guard refuses while the medic is writing a card or flashing a board;
+  wait and try again.
+- **Scrambled or shifted colours on the panel:** Settings ▸ Display ▸ *Fix
+  screen colours*; or power off, wait ten seconds, power on.
+- **The setup refused to start:** its sentence says why — not a Pi 5, not a
+  64-bit Lite trixie card, not at `~/reticulum-tool`, or run with sudo.
+- **Read the logs:** `~/medic_setup.log` (the setup), `~/ui.log` and
+  `~/ui_crash.log` (the app).
+- Report it: open an issue on GitHub with the log and the step's line.
+
+## Updating
+
+`cd ~/reticulum-tool && git pull`, run the setup again (it installs anything
+whose pin moved and builds any missing image), then restart the app with the
+command above. The details are in the appendix.
+
+---
+
+## Appendix — what the setup does, and what it assumes
 
 Rewritten 2026-10-08 for `scripts/setup_medic.py`. Nothing below is a step the
 repository does not do; where the path still has a hole, the hole is named
@@ -23,7 +266,7 @@ from. `tests/test_medic_setup.py` holds that file to the code: every firmware
 folder the code builds from has a pinned source, every board BUILD flashes from
 a pre-built image has a build recipe, every step of the clone is accounted for.
 
-## What the code assumes about the hardware
+### What the code assumes about the hardware
 
 The case these parts fit in — a 3D print, with the parts list and assembly
 steps (Pi 5, Active Cooler, Touch Display 2, Waveshare UPS Module 3S, Heltec
@@ -32,14 +275,17 @@ Wireless Tracker) — is on Cults 3D:
 
 - **Raspberry Pi 5.** The setup and the clone ladder both refuse anything else
   (`workflows/clone.py` `verify_target_pi5`, run by the setup too).
-- **A 5-inch DSI touchscreen, 720 x 1280 portrait.** The front-page poster is
+- **A Raspberry Pi Touch Display 2, 720 x 1280 portrait** — the 5-inch one on
+  the keeper's medics; Raspberry Pi's documentation gives the 7-inch the same
+  panel resolution and the same touch over the same ribbon, untried here.
+  The front-page poster is
   painted at that size (`ui/home_zones.py`) and the app assumes a portrait panel
   (`ui/app.py`; `RNM_WINDOWED=1` gives a 1280 x 720 development window
   instead). The touch controller the code knows is the **Goodix** one: the
   touch provider is chosen by finding it in sysfs (`ui/touch_input.py`), and
   the kiosk's udev rule names "Goodix Capacitive TouchScreen".
-- **The medic's own radio: a Heltec Wireless Tracker flashed as an RNode with
-  GPS passthrough** (`docs/TRACKER_GNSS.md`, `monitor/serial_splitter.py`). It
+- **The medic's own radio: a Heltec Wireless Tracker (or a Heltec T114 with
+  its GPS module) flashed as an RNode with GPS passthrough** (`docs/TRACKER_GNSS.md`, `monitor/serial_splitter.py`). It
   is set up from the screen (`workflows/medic_radio.py`): the medic writes the
   Tracker image onto it, finds it by its `/dev/serial/by-id` name and wires the
   splitter, `rnsd` and `lxmd` around it. A Wireless Tracker V2 (Rev 2.0, with
@@ -55,13 +301,13 @@ Wireless Tracker) — is on Cults 3D:
   (INA219 over I2C) is optional; the battery gauge and low-battery shutdown read
   it when present (`monitor/ups.py`).
 
-## What the code assumes about the operating system
+### What the code assumes about the operating system
 
 - **Raspberry Pi OS Lite (64-bit), trixie, on the medic's own card.** The
   setup refuses a desktop card (a display manager would fight the kiosk for the
   screen), another architecture, another Debian release or another Python. The
   image the medic itself writes for nodes and clones is pinned separately: the
-  2026-06-18 Lite release (step 25, official download, SHA-256 checked), the
+  2026-06-18 Lite release (step 26, official download, SHA-256 checked), the
   release a clone's carried `.deb` plan is made against
   (`assets/clone_base/dpkg_status`).
 - **Any user name.** The setup runs as whoever runs it (`id -un`, `$HOME`),
@@ -80,42 +326,7 @@ Wireless Tracker) — is on Cults 3D:
   `lxmd_unit`, `reticulum_config`), exactly as on a clone. Until then the medic
   runs without a radio and says so.
 
-## Steps
-
-Do them in order. The commands go in a terminal on the Pi — on its own screen
-with a keyboard, or over SSH.
-
-- Write **Raspberry Pi OS Lite (64-bit)** to the medic's card with Raspberry
-  Pi Imager. In its settings give it a hostname, a user name and password,
-  your Wi-Fi with its country, your time zone, and SSH if you will use it.
-  (Any trixie Lite release passes the setup's check. A clone's own card is the
-  2026-06-18 release the manifest pins; to match it exactly, download that one
-  from the manifest's `pi_os_image` URL and write it with Imager ▸ *Use
-  custom*.)
-- Put the card in the Pi 5 and power it on. Wait for the login prompt.
-- Log in as that user.
-- Install git (Lite has none):
-  `sudo apt update && sudo apt install -y git`
-- Clone the repository to the path the medic reads:
-  `git clone https://github.com/5ugAv/Reticulum-Node-Medic.git ~/reticulum-tool`
-- Run the setup:
-  `python3 ~/reticulum-tool/scripts/setup_medic.py`
-- Wait. It prints one line per step, 31 steps, and takes an hour or more on a
-  good connection (the board cores and PlatformIO are a few gigabytes, and it
-  compiles eight firmware images). Success ends with the line
-  `Node Medic is set up.`
-- If it stops — a failed download, a dropped SSH session, a power cut, a step
-  marked `FAILED` — put right what that line says and run the same command
-  again. Finished steps are skipped; downloads resume.
-- Restart: `sudo reboot`. (Or start the setup with `--reboot` and it restarts
-  by itself once every step is done.)
-
-`python3 ~/reticulum-tool/scripts/setup_medic.py --check` reports, one line per
-item, what is still missing against the manifest and changes nothing. Every
-command the setup runs, with the tail of its output, goes to
-`~/medic_setup.log`.
-
-## What the setup does
+### What the setup does
 
 In order. "Clone step" names the step of the clone's ladder each one stands
 for; **same** means the setup runs that very function from `workflows/clone.py`
@@ -170,26 +381,7 @@ The firmware sources (all published; `firmware_trees` in the manifest):
 | `~/RTNode-2400` | 5ugAv/RTNode-2400 | `techo-support` @ 3a09717 | RTNode-2400-NM for T-Echo, RAK4631, T114 |
 | `~/rnm-assets/RTNode2400` | 5ugAv/RTNode-2400 | `feature/neopixel-status-led` @ 8cccdea | RTNode-2400-NM for the ESP32-S3 boards |
 
-## First boot
-
-The kiosk unit starts the app on its own screen. A medic that has never
-finished its setup opens the **setup walkthrough** (`provisioning/first_use.py`,
-`ui/setup_flow.py`): a short tour, one screen per mode.
-
-- The tour's first page sets up the medic's own radio and position finder,
-  on a Heltec Wireless Tracker or a Heltec T114 with its GPS module: screw the
-  aerial onto the board, plug it in (nothing else), tap its picture, and press
-  *Set up its radio*. The medic writes that board's radio image onto it,
-  records it as its own radio (never flashed again by accident), writes the
-  splitter, `rnsd` and `lxmd` units and `~/.reticulum/config`, restarts itself
-  and checks that the radio and the GPS answer. It can be skipped and done
-  later from Settings ▸ *This medic's radio and position finder*.
-- Locking the medic's own records is Settings ▸ *Encrypt my records*.
-- MAPS ▸ *Download offline map* over the area your nodes will be in. The setup
-  only starts the world overview (zoom 0–8, about 87,000 tiles); the detail of
-  your own area is your choice.
-
-## Known gaps in this path
+### Known gaps in this path
 
 Stated plainly, from the repository as it is on 2026-10-09:
 
@@ -275,8 +467,8 @@ Stated plainly, from the repository as it is on 2026-10-09:
 - **A clone made by a parent with no carried wheelhouse installs stock rns
   1.3.8** (the clone's online fallback reads `assets/requirements.txt`), which
   cannot name the Tracker. A medic set up by this script always has the
-  wheelhouse and its own frozen versions (step 26), so its clones get the
-  patched 1.3.7; a parent that never finished step 26 would not.
+  wheelhouse and its own frozen versions (step 27), so its clones get the
+  patched 1.3.7; a parent that never finished step 27 would not.
 - **Node Medic 1 itself still runs the older desktop arrangement** (labwc and an
   XDG autostart). The pieces that belong only to it are not part of this route:
   `scripts/setup_boot.sh`, `scripts/nodemedic-ui.desktop`,
@@ -284,7 +476,7 @@ Stated plainly, from the repository as it is on 2026-10-09:
   (which still assumes `/home/nodemedic`). `scripts/restart_ui.sh` was written
   for that desktop session; on a kiosk medic restart the unit instead (below).
 
-## What a parent medic must carry to clone
+### What a parent medic must carry to clone
 
 The clone ladder (`workflows/clone.py`, shown one row per step on the Clone
 screen) moves these from the parent to the child. Its rule is to take
@@ -335,7 +527,7 @@ downloading); one that stopped part-way carries what it has.
   can log in to it remotely; a clone for the parent's own fleet keeps the
   parent's key.
 
-## Updating a medic
+### Updating a medic — the details
 
 - On the medic: `cd ~/reticulum-tool && git pull`, then run
   `python3 ~/reticulum-tool/scripts/setup_medic.py` again. It installs packages,
